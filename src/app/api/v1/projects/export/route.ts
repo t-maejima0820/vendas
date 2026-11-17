@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { withApiHandler } from '@/lib/api/handler';
+import { exportProjectsPdf } from '@/lib/domain/pdf-exports';
 import { MasterDataError } from '@/lib/masters/error-mapper';
-import { exportProjectsCsv, exportProjectsPdf } from '@/lib/projects/projects-service';
+import { exportProjectsCsv } from '@/lib/projects/projects-service';
 import type { ProjectStatus } from '@/lib/projects/types';
 
 export const GET = withApiHandler({ requiredFeature: 'construction' }, async ({ req, user, tx }) => {

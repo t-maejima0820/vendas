@@ -1,11 +1,13 @@
 import { NextResponse } from 'next/server';
 import { withApiHandler } from '@/lib/api/handler';
+import {
+  exportSalesListPdf,
+  exportSalesProductSummaryPdf,
+} from '@/lib/domain/pdf-exports';
 import { MasterDataError } from '@/lib/masters/error-mapper';
 import {
   exportSalesCsv,
-  exportSalesListPdf,
   exportSalesProductSummaryCsv,
-  exportSalesProductSummaryPdf,
 } from '@/lib/sales/sales-service';
 import type { ApprovalStatus, SalesEntryType, SalesStatus } from '@/lib/sales/types';
 

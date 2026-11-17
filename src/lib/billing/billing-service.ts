@@ -30,10 +30,10 @@ import {
   type TaxCalcPolicy,
   type TaxCode,
 } from '@/lib/domain/calculations';
-import {
-  renderBillingDetailListPdf,
-  renderBillingListPdf,
-  renderBillingSimpleListPdf,
+import type {
+  BillingDetailListPdfInput,
+  BillingListPdfInput,
+  BillingSimpleListPdfInput,
 } from '@/lib/domain/pdf-renderer';
 import { getConsolidatedBaseLookups } from '@/lib/estimates/estimates-service';
 import type { QuotationTemplateVariant, SnapshotHistoryItemDto } from '@/lib/estimates/types';
@@ -1916,12 +1916,17 @@ export async function exportBillingListCsv(
   return `\uFEFF${[header, ...lines].join('\r\n')}`;
 }
 
-export async function exportBillingListPdf(
+export type BillingListPdfBuildResult =
+  | { target: 'standard'; input: BillingListPdfInput }
+  | { target: 'simple'; input: BillingSimpleListPdfInput }
+  | { target: 'detail'; input: BillingDetailListPdfInput };
+
+export async function buildBillingListPdfInput(
   tx: DbExecutor,
   tenantId: string,
   target: BillingExportTarget,
   filter: BillingListFilter,
-): Promise<Uint8Array> {
+): Promise<BillingListPdfBuildResult> {
   await requireAnyBillingReadFeature(tx, tenantId);
   const f = normalizeBillingListFilter({ ...filter, page: 1, pageSize: 5000 });
 
@@ -1939,35 +1944,38 @@ export async function exportBillingListPdf(
     for (const item of page.items) {
       sumExcl += item.currentExclAmount;
     }
-    return renderBillingListPdf({
-      companyName,
-      generatedDate,
-      filterSummary,
-      items: page.items.map((item) => ({
-        billingNo: item.billingNo,
-        billingDate: item.billingDate,
-        paymentDueDate: item.paymentDueDate,
-        partnerName: item.partnerName,
-        isSubscriptionBill: item.isSubscriptionBill,
-        statusLabel: RECEIVABLE_STATUS_LABELS[item.status],
-        prevCarriedBalance: item.prevCarriedBalance,
-        periodReceiptAmount: item.periodReceiptAmount,
-        netCarriedBalance: item.netCarriedBalance,
-        currentExclAmount: item.currentExclAmount,
-        taxTotal: item.taxTotal,
-        billingAmount: item.billingAmount,
-        closingArBalance: item.closingArBalance,
-      })),
-      totals: {
-        count: page.items.length,
-        prevCarriedBalance: page.summary.sumPrevCarried,
-        periodReceiptAmount: page.summary.sumPeriodReceipt,
-        currentExclAmount: sumExcl,
-        taxTotal: page.summary.sumTaxTotal,
-        billingAmount: page.summary.sumBillingAmount,
-        closingArBalance: page.summary.sumClosingAr,
+    return {
+      target: 'standard',
+      input: {
+        companyName,
+        generatedDate,
+        filterSummary,
+        items: page.items.map((item) => ({
+          billingNo: item.billingNo,
+          billingDate: item.billingDate,
+          paymentDueDate: item.paymentDueDate,
+          partnerName: item.partnerName,
+          isSubscriptionBill: item.isSubscriptionBill,
+          statusLabel: RECEIVABLE_STATUS_LABELS[item.status],
+          prevCarriedBalance: item.prevCarriedBalance,
+          periodReceiptAmount: item.periodReceiptAmount,
+          netCarriedBalance: item.netCarriedBalance,
+          currentExclAmount: item.currentExclAmount,
+          taxTotal: item.taxTotal,
+          billingAmount: item.billingAmount,
+          closingArBalance: item.closingArBalance,
+        })),
+        totals: {
+          count: page.items.length,
+          prevCarriedBalance: page.summary.sumPrevCarried,
+          periodReceiptAmount: page.summary.sumPeriodReceipt,
+          currentExclAmount: sumExcl,
+          taxTotal: page.summary.sumTaxTotal,
+          billingAmount: page.summary.sumBillingAmount,
+          closingArBalance: page.summary.sumClosingAr,
+        },
       },
-    });
+    };
   }
 
   if (target === 'simple') {
@@ -1996,18 +2004,21 @@ export async function exportBillingListPdf(
         totalAmount: total,
       };
     });
-    return renderBillingSimpleListPdf({
-      companyName,
-      generatedDate,
-      filterSummary,
-      items,
-      totals: {
-        count: items.length,
-        subtotalAmount: sumExcl,
-        taxTotal: sumTax,
-        totalAmount: sumTotal,
+    return {
+      target: 'simple',
+      input: {
+        companyName,
+        generatedDate,
+        filterSummary,
+        items,
+        totals: {
+          count: items.length,
+          subtotalAmount: sumExcl,
+          taxTotal: sumTax,
+          totalAmount: sumTotal,
+        },
       },
-    });
+    };
   }
 
   const detailRows = await queryBillingDetailRows(tx, f);
@@ -2042,18 +2053,21 @@ export async function exportBillingListPdf(
     };
   });
 
-  return renderBillingDetailListPdf({
-    companyName,
-    generatedDate,
-    filterSummary,
-    items,
-    totals: {
-      count: items.length,
-      exclAmount: sumExcl,
-      lineTax: sumTax,
-      rowTotal: sumRowTotal,
+  return {
+    target: 'detail',
+    input: {
+      companyName,
+      generatedDate,
+      filterSummary,
+      items,
+      totals: {
+        count: items.length,
+        exclAmount: sumExcl,
+        lineTax: sumTax,
+        rowTotal: sumRowTotal,
+      },
     },
-  });
+  };
 }
 
 // 未使用警告防止のため明示型参照を維持

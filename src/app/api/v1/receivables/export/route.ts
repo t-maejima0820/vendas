@@ -1,11 +1,9 @@
 import { NextResponse } from 'next/server';
 import { withApiHandler } from '@/lib/api/handler';
+import { exportReceivableBalancesPdf } from '@/lib/domain/pdf-exports';
 import { MasterDataError } from '@/lib/masters/error-mapper';
 import { parseReceivableBalanceFilterFromUrl } from '@/lib/receivables/payload-parser';
-import {
-  exportReceivableBalancesCsv,
-  exportReceivableBalancesPdf,
-} from '@/lib/receivables/receivables-service';
+import { exportReceivableBalancesCsv } from '@/lib/receivables/receivables-service';
 
 export const GET = withApiHandler({ requiredFeature: 'receivable' }, async ({ req, user, tx }) => {
   const url = new URL(req.url);

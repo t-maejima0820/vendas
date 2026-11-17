@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react';
 import './globals.css';
 
+export const preferredRegion = 'hnd1';
+
 export const metadata = {
   title: '販売管理ヴェンダス（Vendas Web）',
   description: '販売・購買・案件原価管理 マルチテナントSaaS基盤',

@@ -1,6 +1,6 @@
 import type { DbExecutor } from '@/lib/db/tenant-client';
 import { computeMarginPercent } from '@/lib/domain/calculations';
-import { renderCustomAnalyticsPdf } from '@/lib/domain/pdf-renderer';
+import type { CustomAnalyticsPdfInput } from '@/lib/domain/pdf-renderer';
 import { isFeatureEnabled, requireFeature } from '@/lib/feature-flags/gate';
 import { MasterDataError } from '@/lib/masters/error-mapper';
 
@@ -440,11 +440,11 @@ export async function exportCustomAnalyticsCsv(
   return `\uFEFF${[header, ...lines].join('\r\n')}`;
 }
 
-export async function exportCustomAnalyticsPdf(
+export async function buildCustomAnalyticsPdfInput(
   tx: DbExecutor,
   tenantId: string,
   filter: CustomAnalyticsFilter = {},
-): Promise<Uint8Array> {
+): Promise<CustomAnalyticsPdfInput> {
   const page = await getCustomAnalytics(tx, tenantId, filter);
   const tsRows = await tx.query<{ company_name: string }>(
     'SELECT company_name FROM tenant_settings WHERE tenant_id = $1::uuid LIMIT 1',
@@ -463,12 +463,12 @@ export async function exportCustomAnalyticsPdf(
     parts.push(`キーワード:${filter.keyword.trim()}`);
   }
 
-  return renderCustomAnalyticsPdf({
+  return {
     companyName,
     generatedDate: new Date().toISOString().slice(0, 10),
     dimensionLabel: page.dimensionLabel,
     filterSummary: parts.length > 0 ? parts.join(' / ') : '全期間・全対象',
     items: page.items,
     totals: page.totals,
-  });
+  };
 }

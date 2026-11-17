@@ -1,5 +1,5 @@
 import type { DbExecutor } from '@/lib/db/tenant-client';
-import { renderMailTargetListPdf } from '@/lib/domain/pdf-renderer';
+import type { MailTargetListPdfInput } from '@/lib/domain/pdf-renderer';
 import { requireFeature } from '@/lib/feature-flags/gate';
 import { MasterDataError } from '@/lib/masters/error-mapper';
 
@@ -423,11 +423,11 @@ export async function exportMailTargetsCsv(
   return `\uFEFF${[header, ...lines].join('\r\n')}`;
 }
 
-export async function exportMailTargetsPdf(
+export async function buildMailTargetsPdfInput(
   tx: DbExecutor,
   tenantId: string,
   filter: { keyword?: string | null; mailEnabledOnly?: boolean } = {},
-): Promise<Uint8Array> {
+): Promise<MailTargetListPdfInput> {
   const overview = await getMailOverview(tx, tenantId, filter);
   const parts: string[] = [];
   if (filter.mailEnabledOnly) parts.push('メール送信許可のみ');
@@ -435,7 +435,7 @@ export async function exportMailTargetsPdf(
     parts.push(`キーワード:${filter.keyword.trim()}`);
   }
 
-  return renderMailTargetListPdf({
+  return {
     companyName: overview.companyName,
     generatedDate: new Date().toISOString().slice(0, 10),
     filterSummary: parts.length > 0 ? parts.join(' / ') : '全取引先',
@@ -454,5 +454,5 @@ export async function exportMailTargetsPdf(
       count: overview.totalCount,
       mailEnabledCount: overview.mailEnabledCount,
     },
-  });
+  };
 }

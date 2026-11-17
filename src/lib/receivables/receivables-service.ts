@@ -1,7 +1,7 @@
 import { calculatePartnersArBalances } from '@/lib/billing/ar-balance-service';
 import { RECEIVABLE_STATUS_LABELS, type ReceivableStatus } from '@/lib/billing/types';
 import type { DbExecutor } from '@/lib/db/tenant-client';
-import { renderReceivableListPdf } from '@/lib/domain/pdf-renderer';
+import type { ReceivableListPdfInput } from '@/lib/domain/pdf-renderer';
 import { getConsolidatedBaseLookups } from '@/lib/estimates/estimates-service';
 import type { SnapshotHistoryItemDto } from '@/lib/estimates/types';
 import { isFeatureEnabled, requireFeature } from '@/lib/feature-flags/gate';
@@ -389,11 +389,11 @@ export async function exportReceivableBalancesCsv(
   return `\uFEFF${[header, ...lines].join('\r\n')}`;
 }
 
-export async function exportReceivableBalancesPdf(
+export async function buildReceivableBalancesPdfInput(
   tx: DbExecutor,
   tenantId: string,
   filter: ReceivableBalanceFilter,
-): Promise<Uint8Array> {
+): Promise<ReceivableListPdfInput> {
   const result = await listReceivableBalances(tx, tenantId, filter);
   const settingsRows = await tx.query<{ company_name: string }>(
     'SELECT company_name FROM tenant_settings WHERE tenant_id = $1::uuid LIMIT 1',
@@ -401,7 +401,7 @@ export async function exportReceivableBalancesPdf(
   );
   const companyName = settingsRows[0] !== undefined ? settingsRows[0].company_name : '自社';
 
-  return renderReceivableListPdf({
+  return {
     companyName,
     generatedDate: new Date().toISOString().slice(0, 10),
     filterSummary: `期間:${result.periodStart}〜${result.periodEnd}`,
@@ -427,7 +427,7 @@ export async function exportReceivableBalancesPdf(
       periodNetDelta: result.totals.periodNetDelta,
       closingArBalance: result.totals.closingArBalance,
     },
-  });
+  };
 }
 
 /**

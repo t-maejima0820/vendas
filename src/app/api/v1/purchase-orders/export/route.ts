@@ -1,10 +1,8 @@
 import { NextResponse } from 'next/server';
 import { withApiHandler } from '@/lib/api/handler';
+import { exportPurchaseOrdersPdf } from '@/lib/domain/pdf-exports';
 import { MasterDataError } from '@/lib/masters/error-mapper';
-import {
-  exportPurchaseOrdersCsv,
-  exportPurchaseOrdersPdf,
-} from '@/lib/purchasing/purchase-orders-service';
+import { exportPurchaseOrdersCsv } from '@/lib/purchasing/purchase-orders-service';
 import type { OrderStatus } from '@/lib/purchasing/types';
 
 export const GET = withApiHandler({ requiredFeature: 'order' }, async ({ req, user, tx }) => {

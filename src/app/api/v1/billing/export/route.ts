@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
 import { withApiHandler } from '@/lib/api/handler';
-import { exportBillingListCsv, exportBillingListPdf } from '@/lib/billing/billing-service';
+import { exportBillingListCsv } from '@/lib/billing/billing-service';
 import { parseBillingListFilterFromUrl } from '@/lib/billing/payload-parser';
 import type { BillingExportTarget } from '@/lib/billing/types';
+import { exportBillingListPdf } from '@/lib/domain/pdf-exports';
 import { MasterDataError } from '@/lib/masters/error-mapper';
 
 function getExportLabel(target: BillingExportTarget): string {

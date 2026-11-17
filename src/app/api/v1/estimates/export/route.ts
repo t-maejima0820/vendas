@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import { withApiHandler } from '@/lib/api/handler';
+import { exportQuotationsListPdf } from '@/lib/domain/pdf-exports';
 import {
   exportQuotationsCsv,
-  exportQuotationsListPdf,
   type QuotationListFilter,
 } from '@/lib/estimates/estimates-service';
 import type { QuotationStatus } from '@/lib/estimates/types';

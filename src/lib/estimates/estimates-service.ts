@@ -10,7 +10,7 @@ import {
   type TaxCalcPolicy,
   type TaxCode,
 } from '@/lib/domain/calculations';
-import { renderEstimateListPdf } from '@/lib/domain/pdf-renderer';
+import type { EstimateListPdfInput } from '@/lib/domain/pdf-renderer';
 import {
   QUOTATION_STATUS_LABELS,
   type AttachmentDto,
@@ -1515,11 +1515,11 @@ export async function exportQuotationsCsv(
   return `\uFEFF${[header, ...lines].join('\r\n')}`;
 }
 
-export async function exportQuotationsListPdf(
+export async function buildQuotationsListPdfInput(
   tx: DbExecutor,
   tenantId: string,
   filter: QuotationListFilter = {},
-): Promise<Uint8Array> {
+): Promise<EstimateListPdfInput> {
   const settingsRows = await tx.query<{ company_name: string }>(
     'SELECT company_name FROM tenant_settings WHERE tenant_id = $1::uuid LIMIT 1',
     [tenantId],
@@ -1538,7 +1538,7 @@ export async function exportQuotationsListPdf(
   if (filter.selectedFilter === 'SELECTED') parts.push('採用のみ');
   if (filter.selectedFilter === 'UNSELECTED') parts.push('未採用のみ');
 
-  return renderEstimateListPdf({
+  return {
     companyName,
     generatedDate: new Date().toISOString().slice(0, 10),
     filterSummary: parts.length > 0 ? parts.join(' / ') : '全件',
@@ -1565,5 +1565,5 @@ export async function exportQuotationsListPdf(
       costSubtotal: page.summary.costSubtotal,
       grossProfitExcl: page.summary.grossProfitExcl,
     },
-  });
+  };
 }

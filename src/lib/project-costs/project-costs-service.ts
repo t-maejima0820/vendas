@@ -8,7 +8,7 @@ import {
   type TaxCalcPolicy,
   type TaxCode,
 } from '@/lib/domain/calculations';
-import { renderProjectCostListPdf } from '@/lib/domain/pdf-renderer';
+import type { ProjectCostListPdfInput } from '@/lib/domain/pdf-renderer';
 import { COST_CATEGORY_LABELS } from '@/lib/estimates/types';
 import { requireFeature } from '@/lib/feature-flags/gate';
 import { mapPgConstraintError, MasterDataError } from '@/lib/masters/error-mapper';
@@ -1162,11 +1162,11 @@ export async function exportProjectCostsCsv(
   return `\uFEFF${lines.join('\r\n')}`;
 }
 
-export async function exportProjectCostsPdf(
+export async function buildProjectCostsPdfInput(
   tx: DbExecutor,
   tenantId: string,
   filter: ProjectCostListFilter,
-): Promise<Uint8Array> {
+): Promise<ProjectCostListPdfInput> {
   const result = await listProjectCosts(tx, tenantId, { ...filter, page: 1, pageSize: 5000 });
   const settingsRows = await tx.query<{ company_name: string }>(
     'SELECT company_name FROM tenant_settings WHERE tenant_id = $1::uuid LIMIT 1',
@@ -1178,7 +1178,7 @@ export async function exportProjectCostsPdf(
       ? COST_CATEGORY_LABELS[filter.costCategory]
       : '全6費目';
 
-  return renderProjectCostListPdf({
+  return {
     companyName,
     generatedDate: new Date().toISOString().slice(0, 10),
     filterSummary: `費目:${catLabel}`,
@@ -1200,5 +1200,5 @@ export async function exportProjectCostsPdf(
       taxTotal: result.summary.taxTotal,
       totalAmount: result.summary.totalAmount,
     },
-  });
+  };
 }

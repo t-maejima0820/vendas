@@ -1,10 +1,8 @@
 import { NextResponse } from 'next/server';
 import { withApiHandler } from '@/lib/api/handler';
+import { exportSupplierPaymentsPdf } from '@/lib/domain/pdf-exports';
 import { MasterDataError } from '@/lib/masters/error-mapper';
-import {
-  exportSupplierPaymentsCsv,
-  exportSupplierPaymentsPdf,
-} from '@/lib/payables/payables-service';
+import { exportSupplierPaymentsCsv } from '@/lib/payables/payables-service';
 
 export const GET = withApiHandler({ requiredFeature: 'payment' }, async ({ req, user, tx }) => {
   const url = new URL(req.url);

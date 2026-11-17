@@ -13,6 +13,7 @@ export function createPgPoolConfig(connectionString: string): PoolConfig {
 }
 
 export interface DbExecutor {
+  readonly supportsMultiStatementSimpleQuery?: boolean;
   query<T extends Record<string, unknown>>(sql: string, params?: readonly unknown[]): Promise<T[]>;
 }
 
@@ -42,14 +43,27 @@ export async function withExecutorTenantContext<T>(
   fn: (tx: DbExecutor) => Promise<T>,
 ): Promise<T> {
   const roleName = context.role === undefined ? 'vendas_app' : context.role;
-  await executor.query('BEGIN');
-  try {
+  if (roleName !== 'vendas_app' && roleName !== 'postgres') {
+    throw new DatabaseExecutionError(`未許可のDBロール指定です: ${String(roleName)}`);
+  }
+
+  if (executor.supportsMultiStatementSimpleQuery === true) {
     if (roleName === 'vendas_app') {
-      await executor.query('SET LOCAL ROLE vendas_app');
-    } else if (roleName === 'postgres') {
-      await executor.query('SET LOCAL ROLE postgres');
+      await executor.query('BEGIN; SET LOCAL ROLE vendas_app');
     } else {
-      throw new DatabaseExecutionError(`未許可のDBロール指定です: ${String(roleName)}`);
+      await executor.query('BEGIN; SET LOCAL ROLE postgres');
+    }
+  } else {
+    await executor.query('BEGIN');
+  }
+
+  try {
+    if (executor.supportsMultiStatementSimpleQuery !== true) {
+      if (roleName === 'vendas_app') {
+        await executor.query('SET LOCAL ROLE vendas_app');
+      } else {
+        await executor.query('SET LOCAL ROLE postgres');
+      }
     }
     const empIdParam =
       context.employeeId !== undefined && context.employeeId !== null ? context.employeeId : null;
@@ -82,6 +96,7 @@ export async function withExecutorTenantContext<T>(
 function wrapPoolClient(client: PoolClient): DbExecutor {
   let queue: Promise<void> = Promise.resolve();
   return {
+    supportsMultiStatementSimpleQuery: true,
     async query<T extends Record<string, unknown>>(sql: string, params?: readonly unknown[]): Promise<T[]> {
       const prev = queue;
       let release: () => void = () => undefined;
@@ -91,6 +106,9 @@ function wrapPoolClient(client: PoolClient): DbExecutor {
       await prev;
       try {
         const res = await client.query<T>(sql, params === undefined ? undefined : [...params]);
+        if (Array.isArray(res)) {
+          return [];
+        }
         return res.rows;
       } finally {
         release();
@@ -164,9 +182,15 @@ export async function withExecutorAnonymousAuthContext<T>(
   executor: DbExecutor,
   fn: (tx: DbExecutor) => Promise<T>,
 ): Promise<T> {
-  await executor.query('BEGIN');
+  if (executor.supportsMultiStatementSimpleQuery === true) {
+    await executor.query('BEGIN; SET LOCAL ROLE vendas_app');
+  } else {
+    await executor.query('BEGIN');
+  }
   try {
-    await executor.query('SET LOCAL ROLE vendas_app');
+    if (executor.supportsMultiStatementSimpleQuery !== true) {
+      await executor.query('SET LOCAL ROLE vendas_app');
+    }
     await executor.query("SELECT set_config('app.current_tenant_id', '', true)");
     const result = await fn(executor);
     await executor.query('COMMIT');

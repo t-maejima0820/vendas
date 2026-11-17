@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
 import { withApiHandler } from '@/lib/api/handler';
+import { renderSnapshotPdfById } from '@/lib/domain/pdf-exports';
 import type { DocumentType } from '@/lib/domain/snapshots';
 import { requireEnv } from '@/lib/env';
 import { MasterDataError } from '@/lib/masters/error-mapper';
-import { renderSnapshotPdfById } from '@/lib/snapshots/snapshot-service';
 
 function extractSnapshotIdFromPdfPath(req: Request): string {
   const segments = new URL(req.url).pathname.split('/').filter((s) => s.length > 0);

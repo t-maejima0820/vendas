@@ -7,7 +7,7 @@ import {
   type TaxCalcPolicy,
   type TaxCode,
 } from '@/lib/domain/calculations';
-import { renderPurchaseListPdf } from '@/lib/domain/pdf-renderer';
+import type { PurchaseListPdfInput } from '@/lib/domain/pdf-renderer';
 import { requireFeature } from '@/lib/feature-flags/gate';
 import { mapPgConstraintError, MasterDataError } from '@/lib/masters/error-mapper';
 import {
@@ -1252,11 +1252,11 @@ export async function exportPurchasesCsv(
   return `\uFEFF${lines.join('\r\n')}`;
 }
 
-export async function exportPurchasesPdf(
+export async function buildPurchasesPdfInput(
   tx: DbExecutor,
   tenantId: string,
   filter: PurchaseListFilter,
-): Promise<Uint8Array> {
+): Promise<PurchaseListPdfInput> {
   const result = await listPurchases(tx, tenantId, { ...filter, page: 1, pageSize: 5000 });
   const settingsRows = await tx.query<{ company_name: string }>(
     'SELECT company_name FROM tenant_settings WHERE tenant_id = $1::uuid LIMIT 1',
@@ -1264,7 +1264,7 @@ export async function exportPurchasesPdf(
   );
   const companyName = settingsRows[0] !== undefined ? settingsRows[0].company_name : '自社';
 
-  return renderPurchaseListPdf({
+  return {
     companyName,
     generatedDate: new Date().toISOString().slice(0, 10),
     filterSummary: `状態:${filter.status !== null && filter.status !== undefined ? PURCHASE_STATUS_LABELS[filter.status] : 'すべて'}`,
@@ -1287,5 +1287,5 @@ export async function exportPurchasesPdf(
       taxTotal: result.summary.taxTotal,
       totalAmount: result.summary.totalAmount,
     },
-  });
+  };
 }

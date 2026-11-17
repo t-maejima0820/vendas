@@ -6,9 +6,9 @@ import {
   type TaxCalcPolicy,
   type TaxCode,
 } from '@/lib/domain/calculations';
-import {
-  renderSalesListPdf,
-  renderSalesProductSummaryPdf,
+import type {
+  SalesListPdfInput,
+  SalesProductSummaryPdfInput,
 } from '@/lib/domain/pdf-renderer';
 import { getConsolidatedBaseLookups } from '@/lib/estimates/estimates-service';
 import { FeatureDisabledError, isFeatureEnabled, requireFeature } from '@/lib/feature-flags/gate';
@@ -1374,11 +1374,11 @@ export async function exportSalesCsv(
   return `\uFEFF${[header, ...lines].join('\r\n')}`;
 }
 
-export async function exportSalesListPdf(
+export async function buildSalesListPdfInput(
   tx: DbExecutor,
   tenantId: string,
   filter: SalesListFilter,
-): Promise<Uint8Array> {
+): Promise<SalesListPdfInput> {
   const settingsRows = await tx.query<{ company_name: string }>(
     'SELECT company_name FROM tenant_settings WHERE tenant_id = $1::uuid LIMIT 1',
     [tenantId],
@@ -1401,7 +1401,7 @@ export async function exportSalesListPdf(
   const reportTitle =
     filter.entryType === 'ADVANCE' ? '立替金一覧表（立替伝票管理）' : '売上一覧表（売上伝票管理）';
 
-  return renderSalesListPdf({
+  return {
     reportTitle,
     companyName,
     generatedDate: new Date().toISOString().slice(0, 10),
@@ -1425,7 +1425,7 @@ export async function exportSalesListPdf(
       taxTotal: page.summary.taxTotal,
       totalAmount: page.summary.totalAmount,
     },
-  });
+  };
 }
 
 export async function exportSalesProductSummaryCsv(
@@ -1469,11 +1469,11 @@ export async function exportSalesProductSummaryCsv(
   return `\uFEFF${[header, ...lines].join('\r\n')}`;
 }
 
-export async function exportSalesProductSummaryPdf(
+export async function buildSalesProductSummaryPdfInput(
   tx: DbExecutor,
   tenantId: string,
   filter: SalesProductSummaryFilter = {},
-): Promise<Uint8Array> {
+): Promise<SalesProductSummaryPdfInput> {
   const settingsRows = await tx.query<{ company_name: string }>(
     'SELECT company_name FROM tenant_settings WHERE tenant_id = $1::uuid LIMIT 1',
     [tenantId],
@@ -1489,7 +1489,7 @@ export async function exportSalesProductSummaryPdf(
   }
   if (optTrimmed(filter.keyword) !== null) parts.push(`品名:${optTrimmed(filter.keyword)}`);
 
-  return renderSalesProductSummaryPdf({
+  return {
     companyName,
     generatedDate: new Date().toISOString().slice(0, 10),
     filterSummary: parts.length > 0 ? parts.join(' / ') : '全件',
@@ -1506,5 +1506,5 @@ export async function exportSalesProductSummaryPdf(
       inclAmount: item.inclAmount,
     })),
     totals: result.totals,
-  });
+  };
 }

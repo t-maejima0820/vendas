@@ -1,11 +1,9 @@
 import { NextResponse } from 'next/server';
 import { withApiHandler } from '@/lib/api/handler';
+import { exportPayableBalancesPdf } from '@/lib/domain/pdf-exports';
 import { MasterDataError } from '@/lib/masters/error-mapper';
 import { parsePayableBalanceFilterFromUrl } from '@/lib/payables/payload-parser';
-import {
-  exportPayableBalancesCsv,
-  exportPayableBalancesPdf,
-} from '@/lib/payables/payables-service';
+import { exportPayableBalancesCsv } from '@/lib/payables/payables-service';
 
 export const GET = withApiHandler({ requiredFeature: 'payable' }, async ({ req, user, tx }) => {
   const url = new URL(req.url);

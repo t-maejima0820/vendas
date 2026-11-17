@@ -7,7 +7,7 @@ import {
   type TaxCalcPolicy,
   type TaxCode,
 } from '@/lib/domain/calculations';
-import { renderPurchaseOrderListPdf } from '@/lib/domain/pdf-renderer';
+import type { PurchaseOrderListPdfInput } from '@/lib/domain/pdf-renderer';
 import type { QuotationTemplateVariant } from '@/lib/estimates/types';
 import { isFeatureEnabled, requireFeature } from '@/lib/feature-flags/gate';
 import { mapPgConstraintError, MasterDataError } from '@/lib/masters/error-mapper';
@@ -1152,11 +1152,11 @@ export async function exportPurchaseOrdersCsv(
   return `\uFEFF${lines.join('\r\n')}`;
 }
 
-export async function exportPurchaseOrdersPdf(
+export async function buildPurchaseOrdersPdfInput(
   tx: DbExecutor,
   tenantId: string,
   filter: PurchaseOrderListFilter,
-): Promise<Uint8Array> {
+): Promise<PurchaseOrderListPdfInput> {
   const result = await listPurchaseOrders(tx, tenantId, { ...filter, page: 1, pageSize: 5000 });
   const settingsRows = await tx.query<{ company_name: string }>(
     'SELECT company_name FROM tenant_settings WHERE tenant_id = $1::uuid LIMIT 1',
@@ -1164,7 +1164,7 @@ export async function exportPurchaseOrdersPdf(
   );
   const companyName = settingsRows[0] !== undefined ? settingsRows[0].company_name : '自社';
 
-  return renderPurchaseOrderListPdf({
+  return {
     companyName,
     generatedDate: new Date().toISOString().slice(0, 10),
     filterSummary: `状態:${filter.status !== null && filter.status !== undefined ? ORDER_STATUS_LABELS[filter.status] : 'すべて'}`,
@@ -1186,5 +1186,5 @@ export async function exportPurchaseOrdersPdf(
       taxTotal: result.summary.taxTotal,
       totalAmount: result.summary.totalAmount,
     },
-  });
+  };
 }

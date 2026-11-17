@@ -1,7 +1,7 @@
 import Decimal from 'decimal.js';
 import type { DbExecutor } from '@/lib/db/tenant-client';
 import { applyRounding, type RoundingMode } from '@/lib/domain/calculations';
-import { renderStockListPdf } from '@/lib/domain/pdf-renderer';
+import type { StockListPdfInput } from '@/lib/domain/pdf-renderer';
 import { requireFeature } from '@/lib/feature-flags/gate';
 import { MasterDataError } from '@/lib/masters/error-mapper';
 
@@ -280,11 +280,11 @@ export async function exportStockCsv(
   return `\uFEFF${[header, ...lines].join('\r\n')}`;
 }
 
-export async function exportStockPdf(
+export async function buildStockPdfInput(
   tx: DbExecutor,
   tenantId: string,
   filter: StockListFilter = {},
-): Promise<Uint8Array> {
+): Promise<StockListPdfInput> {
   const page = await listStockProducts(tx, tenantId, filter);
   const tsRows = await tx.query<{ company_name: string }>(
     'SELECT company_name FROM tenant_settings WHERE tenant_id = $1::uuid LIMIT 1',
@@ -298,7 +298,7 @@ export async function exportStockPdf(
     parts.push(`キーワード:${filter.keyword.trim()}`);
   }
 
-  return renderStockListPdf({
+  return {
     companyName,
     generatedDate: new Date().toISOString().slice(0, 10),
     filterSummary: parts.length > 0 ? parts.join(' / ') : '全商品',
@@ -321,5 +321,5 @@ export async function exportStockPdf(
       totalStockQuantity: page.totalStockQuantity,
       totalValuation: page.totalValuation,
     },
-  });
+  };
 }

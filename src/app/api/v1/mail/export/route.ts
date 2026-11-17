@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { withApiHandler } from '@/lib/api/handler';
-import { exportMailTargetsCsv, exportMailTargetsPdf } from '@/lib/mail/mail-service';
+import { exportMailTargetsPdf } from '@/lib/domain/pdf-exports';
+import { exportMailTargetsCsv } from '@/lib/mail/mail-service';
 import { MasterDataError } from '@/lib/masters/error-mapper';
 
 export const GET = withApiHandler({ requiredFeature: 'mail' }, async ({ req, user, tx }) => {

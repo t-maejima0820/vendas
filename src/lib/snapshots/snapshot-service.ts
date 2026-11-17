@@ -12,7 +12,6 @@ import {
   type TaxCalcPolicy,
   type TaxCode,
 } from '@/lib/domain/calculations';
-import { renderDocumentSnapshotPdf } from '@/lib/domain/pdf-renderer';
 import {
   buildDocumentSnapshot,
   type DocumentSnapshotPayload,
@@ -1949,15 +1948,14 @@ export async function getSnapshotById(
 }
 
 /**
- * 既存スナップショットIDからのPDF再出力（現行マスタ非参照・保存済みpayload_jsonのみ使用）
+ * 既存スナップショットIDからのPDF再出力用データ取得（現行マスタ非参照・保存済みpayload_jsonのみ使用）
  */
-export async function renderSnapshotPdfById(
+export async function loadSnapshotForPdf(
   tx: DbExecutor,
   tenantId: string,
   snapshotId: string,
-  encryptionKeyHex: string,
 ): Promise<{
-  pdfBytes: Uint8Array;
+  payload: DocumentSnapshotPayload;
   documentNo: string;
   versionNo: number;
   documentType: DocumentType;
@@ -1981,9 +1979,8 @@ export async function renderSnapshotPdfById(
   }
   const payload = parseSnapshotPayload(row.payload_json);
   await assertSnapshotReadFeature(tx, tenantId, payload);
-  const pdfBytes = await renderDocumentSnapshotPdf(payload, encryptionKeyHex);
   return {
-    pdfBytes,
+    payload,
     documentNo: row.document_no,
     versionNo: Number(row.version_no),
     documentType: row.document_type,

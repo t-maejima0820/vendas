@@ -1,11 +1,9 @@
 import { NextResponse } from 'next/server';
 import { withApiHandler } from '@/lib/api/handler';
 import type { CostCategory } from '@/lib/domain/calculations';
+import { exportProjectCostsPdf } from '@/lib/domain/pdf-exports';
 import { MasterDataError } from '@/lib/masters/error-mapper';
-import {
-  exportProjectCostsCsv,
-  exportProjectCostsPdf,
-} from '@/lib/project-costs/project-costs-service';
+import { exportProjectCostsCsv } from '@/lib/project-costs/project-costs-service';
 import type { ProjectStatus } from '@/lib/projects/types';
 
 function parseCategory(raw: string | null): CostCategory | null {

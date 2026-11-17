@@ -1,7 +1,7 @@
 import type { DbExecutor } from '@/lib/db/tenant-client';
-import {
-  renderPayableListPdf,
-  renderSupplierPaymentListPdf,
+import type {
+  PayableListPdfInput,
+  SupplierPaymentListPdfInput,
 } from '@/lib/domain/pdf-renderer';
 import { isFeatureEnabled, requireFeature } from '@/lib/feature-flags/gate';
 import { mapPgConstraintError, MasterDataError } from '@/lib/masters/error-mapper';
@@ -475,11 +475,11 @@ export async function exportPayableBalancesCsv(
   return `\uFEFF${lines.join('\r\n')}`;
 }
 
-export async function exportPayableBalancesPdf(
+export async function buildPayableBalancesPdfInput(
   tx: DbExecutor,
   tenantId: string,
   filter: PayableBalanceFilter,
-): Promise<Uint8Array> {
+): Promise<PayableListPdfInput> {
   const result = await listPayableBalances(tx, tenantId, filter);
   const settingsRows = await tx.query<{ company_name: string }>(
     'SELECT company_name FROM tenant_settings WHERE tenant_id = $1::uuid LIMIT 1',
@@ -487,7 +487,7 @@ export async function exportPayableBalancesPdf(
   );
   const companyName = settingsRows[0] !== undefined ? settingsRows[0].company_name : '自社';
 
-  return renderPayableListPdf({
+  return {
     companyName,
     generatedDate: new Date().toISOString().slice(0, 10),
     filterSummary: `期間:${result.periodStart}〜${result.periodEnd}`,
@@ -513,7 +513,7 @@ export async function exportPayableBalancesPdf(
       periodNetDelta: result.totals.periodNetDelta,
       closingApBalance: result.totals.closingApBalance,
     },
-  });
+  };
 }
 
 /**
@@ -1431,11 +1431,11 @@ export async function exportSupplierPaymentsCsv(
   return `\uFEFF${lines.join('\r\n')}`;
 }
 
-export async function exportSupplierPaymentsPdf(
+export async function buildSupplierPaymentsPdfInput(
   tx: DbExecutor,
   tenantId: string,
   filter: SupplierPaymentListFilter,
-): Promise<Uint8Array> {
+): Promise<SupplierPaymentListPdfInput> {
   const result = await listSupplierPayments(tx, tenantId, { ...filter, page: 1, pageSize: 5000 });
   const settingsRows = await tx.query<{ company_name: string }>(
     'SELECT company_name FROM tenant_settings WHERE tenant_id = $1::uuid LIMIT 1',
@@ -1443,7 +1443,7 @@ export async function exportSupplierPaymentsPdf(
   );
   const companyName = settingsRows[0] !== undefined ? settingsRows[0].company_name : '自社';
 
-  return renderSupplierPaymentListPdf({
+  return {
     companyName,
     generatedDate: new Date().toISOString().slice(0, 10),
     filterSummary: `対象件数:${result.summary.totalCount}件`,
@@ -1464,7 +1464,7 @@ export async function exportSupplierPaymentsPdf(
       deductionTotal: result.summary.sumDeductionTotal,
       totalPayment: result.summary.sumTotalPayment,
     },
-  });
+  };
 }
 
 export { PAYABLE_STATUS_LABELS };

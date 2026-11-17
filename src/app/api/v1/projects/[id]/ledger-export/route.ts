@@ -1,10 +1,8 @@
 import { NextResponse } from 'next/server';
 import { withApiHandler } from '@/lib/api/handler';
+import { exportProjectLedgerPdf } from '@/lib/domain/pdf-exports';
 import { MasterDataError } from '@/lib/masters/error-mapper';
-import {
-  exportProjectLedgerCsv,
-  exportProjectLedgerPdf,
-} from '@/lib/projects/projects-service';
+import { exportProjectLedgerCsv } from '@/lib/projects/projects-service';
 
 function extractProjectId(req: Request): string {
   const segments = new URL(req.url).pathname.split('/').filter((s) => s.length > 0);

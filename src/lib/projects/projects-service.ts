@@ -12,9 +12,9 @@ import {
   type TaxCalcPolicy,
   type TaxCode,
 } from '@/lib/domain/calculations';
-import {
-  renderProjectLedgerPdf,
-  renderProjectListPdf,
+import type {
+  ProjectLedgerPdfInput,
+  ProjectListPdfInput,
 } from '@/lib/domain/pdf-renderer';
 import { COST_CATEGORY_LABELS, type AttachmentDto } from '@/lib/estimates/types';
 import { isFeatureEnabled, requireFeature } from '@/lib/feature-flags/gate';
@@ -1858,11 +1858,11 @@ export async function exportProjectsCsv(
   return `\uFEFF${lines.join('\r\n')}`;
 }
 
-export async function exportProjectsPdf(
+export async function buildProjectsPdfInput(
   tx: DbExecutor,
   tenantId: string,
   filter: ProjectListFilter,
-): Promise<Uint8Array> {
+): Promise<ProjectListPdfInput> {
   const result = await listProjects(tx, tenantId, { ...filter, page: 1, pageSize: 5000 });
   const settingsRows = await tx.query<{ company_name: string }>(
     'SELECT company_name FROM tenant_settings WHERE tenant_id = $1::uuid LIMIT 1',
@@ -1875,7 +1875,7 @@ export async function exportProjectsPdf(
       ? result.summary.contractSubtotal
       : result.summary.contractTotal;
 
-  return renderProjectListPdf({
+  return {
     companyName,
     generatedDate: new Date().toISOString().slice(0, 10),
     filterSummary: `状態:${filter.status !== null && filter.status !== undefined ? PROJECT_STATUS_LABELS[filter.status] : 'すべて'}${filter.overBudgetOnly ? ' / 予算超過のみ' : ''}`,
@@ -1903,7 +1903,7 @@ export async function exportProjectsPdf(
       budgetGrossProfit: result.summary.budgetGrossProfit,
       actualGrossProfit: result.summary.actualGrossProfit,
     },
-  });
+  };
 }
 
 export async function exportProjectLedgerCsv(
@@ -1975,11 +1975,11 @@ export async function exportProjectLedgerCsv(
   return `\uFEFF${lines.join('\r\n')}`;
 }
 
-export async function exportProjectLedgerPdf(
+export async function buildProjectLedgerPdfInput(
   tx: DbExecutor,
   tenantId: string,
   projectId: string,
-): Promise<{ pdfBytes: Uint8Array; projectNo: number }> {
+): Promise<{ input: ProjectLedgerPdfInput; projectNo: number }> {
   const detail = await getProjectDetail(tx, tenantId, projectId);
   const settingsRows = await tx.query<{ company_name: string }>(
     'SELECT company_name FROM tenant_settings WHERE tenant_id = $1::uuid LIMIT 1',
@@ -1988,60 +1988,61 @@ export async function exportProjectLedgerPdf(
   const companyName = settingsRows[0] !== undefined ? settingsRows[0].company_name : '自社';
   const costBasisLabel = detail.costTaxMode === 'TAX_EXCLUDED' ? '税抜' : '税込';
 
-  const pdfBytes = await renderProjectLedgerPdf({
-    companyName,
-    generatedDate: new Date().toISOString().slice(0, 10),
+  return {
     projectNo: detail.projectNo,
-    projectName: detail.projectName,
-    projectDate: detail.projectDate,
-    statusLabel: PROJECT_STATUS_LABELS[detail.status],
-    subStatusName: detail.subStatusName,
-    orderKindName: detail.orderKindName,
-    partnerCode: detail.partnerCode,
-    partnerName: detail.partnerName,
-    sitePlace: detail.sitePlace,
-    periodStartDate: detail.periodStartDate,
-    periodEndDate: detail.periodEndDate,
-    salesEmployeeName: detail.salesEmployeeName,
-    siteEmployeeName: detail.siteEmployeeName,
-    costBasisLabel,
-    contractSubtotal: detail.contractSubtotal,
-    contractTax: detail.contractTax,
-    contractTotal: detail.contractTotal,
-    salesRecordedExcl: detail.salesRecordedExcl,
-    salesRecordedIncl: detail.salesRecordedIncl,
-    budgetTotal: detail.budgetTotal,
-    actualCostExclTotal: detail.actualCostExclTotal,
-    actualCostInclTotal: detail.actualCostInclTotal,
-    actualCostEvalTotal: detail.actualCostEvalTotal,
-    budgetVarianceTotal: detail.budgetVarianceTotal,
-    budgetGrossProfit: detail.budgetGrossProfit,
-    actualGrossProfit: detail.actualGrossProfit,
-    actualGrossMarginPercent: detail.actualGrossMarginPercent,
-    categories: detail.categoryComparisons.map((c) => ({
-      categoryLabel: c.categoryLabel,
-      budgetAmount: c.budgetAmount,
-      actualExclAmount: c.actualExclAmount,
-      actualInclAmount: c.actualInclAmount,
-      actualEvalAmount: c.actualEvalAmount,
-      varianceAmount: c.varianceAmount,
-      consumptionRatePercent: c.consumptionRatePercent,
-      isOverBudget: c.isOverBudget,
-    })),
-    costLines: detail.costLines.map((ln) => ({
-      entryDate: ln.entryDate,
-      categoryLabel: ln.categoryLabel,
-      slipTitle: ln.slipTitle,
-      itemName: ln.itemName,
-      quantity: ln.quantity,
-      unitName: ln.unitName,
-      appliedUnitPrice: ln.appliedUnitPrice,
-      lineAmount: ln.lineAmount,
-      lineTax: ln.lineTax,
-      lineTotal: ln.lineTotal,
-      remarks: ln.remarks,
-    })),
-  });
-
-  return { pdfBytes, projectNo: detail.projectNo };
+    input: {
+      companyName,
+      generatedDate: new Date().toISOString().slice(0, 10),
+      projectNo: detail.projectNo,
+      projectName: detail.projectName,
+      projectDate: detail.projectDate,
+      statusLabel: PROJECT_STATUS_LABELS[detail.status],
+      subStatusName: detail.subStatusName,
+      orderKindName: detail.orderKindName,
+      partnerCode: detail.partnerCode,
+      partnerName: detail.partnerName,
+      sitePlace: detail.sitePlace,
+      periodStartDate: detail.periodStartDate,
+      periodEndDate: detail.periodEndDate,
+      salesEmployeeName: detail.salesEmployeeName,
+      siteEmployeeName: detail.siteEmployeeName,
+      costBasisLabel,
+      contractSubtotal: detail.contractSubtotal,
+      contractTax: detail.contractTax,
+      contractTotal: detail.contractTotal,
+      salesRecordedExcl: detail.salesRecordedExcl,
+      salesRecordedIncl: detail.salesRecordedIncl,
+      budgetTotal: detail.budgetTotal,
+      actualCostExclTotal: detail.actualCostExclTotal,
+      actualCostInclTotal: detail.actualCostInclTotal,
+      actualCostEvalTotal: detail.actualCostEvalTotal,
+      budgetVarianceTotal: detail.budgetVarianceTotal,
+      budgetGrossProfit: detail.budgetGrossProfit,
+      actualGrossProfit: detail.actualGrossProfit,
+      actualGrossMarginPercent: detail.actualGrossMarginPercent,
+      categories: detail.categoryComparisons.map((c) => ({
+        categoryLabel: c.categoryLabel,
+        budgetAmount: c.budgetAmount,
+        actualExclAmount: c.actualExclAmount,
+        actualInclAmount: c.actualInclAmount,
+        actualEvalAmount: c.actualEvalAmount,
+        varianceAmount: c.varianceAmount,
+        consumptionRatePercent: c.consumptionRatePercent,
+        isOverBudget: c.isOverBudget,
+      })),
+      costLines: detail.costLines.map((ln) => ({
+        entryDate: ln.entryDate,
+        categoryLabel: ln.categoryLabel,
+        slipTitle: ln.slipTitle,
+        itemName: ln.itemName,
+        quantity: ln.quantity,
+        unitName: ln.unitName,
+        appliedUnitPrice: ln.appliedUnitPrice,
+        lineAmount: ln.lineAmount,
+        lineTax: ln.lineTax,
+        lineTotal: ln.lineTotal,
+        remarks: ln.remarks,
+      })),
+    },
+  };
 }

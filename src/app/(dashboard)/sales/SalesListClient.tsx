@@ -2,8 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useMemo, useState } from 'react';
-import { computePageCount } from '@/lib/estimates/types';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { requestMasterApi } from '@/lib/masters/client-api';
 import {
   APPROVAL_STATUS_LABELS,
@@ -24,25 +23,35 @@ interface SalesListClientProps {
   initialSalesPage: SalesPageDto | null;
   initialAdvancePage: SalesPageDto | null;
   initialProductSummary: SalesProductSummaryResultDto | null;
+  currentJstYear: number;
 }
 
-interface DateGroupSummary {
-  date: string;
-  displayDate: string;
-  dayOfWeek: string;
-  isSunday: boolean;
-  isSaturday: boolean;
+interface MonthBucketSummary {
+  month: number;
+  label: string;
   count: number;
   approvedCount: number;
   pendingCount: number;
-  billedCount: number;
-  projectLinkedCount: number;
-  subtotalAmount: number;
-  taxTotal: number;
   totalAmount: number;
 }
 
-const DOW_NAMES = ['日', '月', '火', '水', '木', '金', '土'] as const;
+const STATUS_FILTER_ORDER: readonly SalesStatus[] = ['K1', 'K2', 'K3', 'K4', 'K5', 'K6'];
+
+const APPROVAL_FILTER_OPTIONS: ReadonlyArray<{ value: '' | '0' | '1' | '2'; label: string }> = [
+  { value: '', label: 'すべて' },
+  { value: '0', label: '未承認' },
+  { value: '1', label: '承認済' },
+  { value: '2', label: '差戻し' },
+];
+
+const PROJECT_LINK_OPTIONS: ReadonlyArray<{
+  value: 'ALL' | 'LINKED' | 'UNLINKED';
+  label: string;
+}> = [
+  { value: 'ALL', label: 'すべて' },
+  { value: 'LINKED', label: 'あり' },
+  { value: 'UNLINKED', label: 'なし' },
+];
 
 function formatYen(amount: number): string {
   return `¥${amount.toLocaleString('ja-JP')}`;
@@ -53,75 +62,32 @@ function formatQty(qty: number): string {
   return qty.toFixed(4).replace(/0+$/, '').replace(/\.$/, '');
 }
 
-function getDateMeta(isoDate: string): {
-  displayDate: string;
-  dayOfWeek: string;
-  isSunday: boolean;
-  isSaturday: boolean;
-} {
-  const parts = isoDate.split('-').map(Number);
-  const y = parts[0];
-  const m = parts[1];
-  const d = parts[2];
-  if (
-    parts.length !== 3 ||
-    y === undefined ||
-    m === undefined ||
-    d === undefined ||
-    Number.isNaN(y) ||
-    Number.isNaN(m) ||
-    Number.isNaN(d)
-  ) {
-    return {
-      displayDate: isoDate.replace(/-/g, '/'),
-      dayOfWeek: '-',
-      isSunday: false,
-      isSaturday: false,
-    };
+function extractYearFromItems(items: SalesListItemDto[], fallbackYear: number): number {
+  let maxYear = 0;
+  for (const item of items) {
+    const y = Number(item.slipDate.slice(0, 4));
+    if (Number.isInteger(y) && y > maxYear) {
+      maxYear = y;
+    }
   }
-  const dt = new Date(y, m - 1, d);
-  const dowRaw = DOW_NAMES[dt.getDay()];
-  const dow = dowRaw !== undefined ? dowRaw : '-';
-  return {
-    displayDate: isoDate.replace(/-/g, '/'),
-    dayOfWeek: dow,
-    isSunday: dow === '日',
-    isSaturday: dow === '土',
-  };
+  return maxYear > 0 ? maxYear : fallbackYear;
 }
 
-function parseYearMonth(yearMonth: string): { y: number; m: number } {
-  const parts = yearMonth.split('-').map(Number);
-  const y = parts[0];
-  const m = parts[1];
-  if (
-    y !== undefined &&
-    m !== undefined &&
-    !Number.isNaN(y) &&
-    !Number.isNaN(m) &&
-    m >= 1 &&
-    m <= 12
-  ) {
-    return { y, m };
-  }
-  const now = new Date();
-  return { y: now.getFullYear(), m: now.getMonth() + 1 };
+function filterItemsByYear(items: SalesListItemDto[], year: number): SalesListItemDto[] {
+  const prefix = `${year}-`;
+  return items.filter((item) => item.slipDate.startsWith(prefix));
 }
 
-function buildMonthRange(yearMonth: string): { from: string; to: string } {
-  const { y, m } = parseYearMonth(yearMonth);
-  const lastDay = new Date(y, m, 0).getDate();
-  const ym = `${String(y).padStart(4, '0')}-${String(m).padStart(2, '0')}`;
+function buildYearRange(year: number, month: number | null): { from: string; to: string } {
+  if (month === null) {
+    return { from: `${year}-01-01`, to: `${year}-12-31` };
+  }
+  const lastDay = new Date(year, month, 0).getDate();
+  const ym = `${year}-${String(month).padStart(2, '0')}`;
   return {
     from: `${ym}-01`,
     to: `${ym}-${String(lastDay).padStart(2, '0')}`,
   };
-}
-
-function shiftYearMonth(yearMonth: string, delta: number): string {
-  const { y, m } = parseYearMonth(yearMonth);
-  const dt = new Date(y, m - 1 + delta, 1);
-  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
 }
 
 export default function SalesListClient({
@@ -130,47 +96,58 @@ export default function SalesListClient({
   initialSalesPage,
   initialAdvancePage,
   initialProductSummary,
+  currentJstYear,
 }: SalesListClientProps) {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<'SALE' | 'ADVANCE' | 'SUMMARY'>(initialTab);
 
-  const [pageData, setPageData] = useState<SalesPageDto>(() => {
-    if (initialTab === 'ADVANCE' && initialAdvancePage !== null) return initialAdvancePage;
-    if (initialSalesPage !== null) return initialSalesPage;
-    if (initialAdvancePage !== null) return initialAdvancePage;
-    return {
-      items: [],
-      summary: {
-        totalCount: 0,
-        subtotalAmount: 0,
-        taxTotal: 0,
-        totalAmount: 0,
-        approvedCount: 0,
-        pendingCount: 0,
-      },
-      page: 1,
-      pageSize: 25,
-    };
+  // 年別キャッシュ（${entryType}_${year} -> items）および全件メモリキャッシュ判定
+  const yearCacheRef = useRef<Map<string, { items: SalesListItemDto[]; totalCount: number }>>(
+    new Map(),
+  );
+  const fullDatasetRef = useRef<Partial<Record<SalesEntryType, SalesListItemDto[]>>>({});
+
+  const initialEntry: SalesEntryType = initialTab === 'ADVANCE' ? 'ADVANCE' : 'SALE';
+  const initialPageObj =
+    initialEntry === 'ADVANCE'
+      ? initialAdvancePage !== null
+        ? initialAdvancePage
+        : initialSalesPage
+      : initialSalesPage !== null
+        ? initialSalesPage
+        : initialAdvancePage;
+
+  const [selectedYear, setSelectedYear] = useState<number>(() =>
+    initialPageObj !== null
+      ? extractYearFromItems(initialPageObj.items, currentJstYear)
+      : currentJstYear,
+  );
+  const [selectedMonth, setSelectedMonth] = useState<number | null>(null);
+
+  const [yearItems, setYearItems] = useState<SalesListItemDto[]>(() => {
+    if (initialPageObj === null) return [];
+    const targetY = extractYearFromItems(initialPageObj.items, currentJstYear);
+    if (initialPageObj.summary.totalCount <= initialPageObj.items.length) {
+      fullDatasetRef.current[initialEntry] = initialPageObj.items;
+    }
+    const filtered = filterItemsByYear(initialPageObj.items, targetY);
+    yearCacheRef.current.set(`${initialEntry}_${targetY}`, {
+      items: filtered,
+      totalCount: filtered.length,
+    });
+    return filtered;
   });
 
+  const [yearTotalCount, setYearTotalCount] = useState<number>(() => yearItems.length);
+
+  // 中間バー：リアルタイム検索＆1クリックセグメントフィルタ
   const [keyword, setKeyword] = useState('');
-  const [status, setStatus] = useState<'' | SalesStatus>('');
+  const [statusFilter, setStatusFilter] = useState<'' | SalesStatus>('');
   const [approvalFilter, setApprovalFilter] = useState<'' | '0' | '1' | '2'>('');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
   const [projectLink, setProjectLink] = useState<'ALL' | 'LINKED' | 'UNLINKED'>('ALL');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [selectedDateFilter, setSelectedDateFilter] = useState<string | null>(null);
-  const [monthCursor, setMonthCursor] = useState<string>(() => {
-    const firstItem =
-      initialTab === 'ADVANCE' && initialAdvancePage !== null
-        ? initialAdvancePage.items[0]
-        : initialSalesPage !== null
-          ? initialSalesPage.items[0]
-          : undefined;
-    return firstItem !== undefined ? firstItem.slipDate.slice(0, 7) : '';
-  });
 
+  // 商品別集計状態
   const [summaryData, setSummaryData] = useState<SalesProductSummaryResultDto>(
     initialProductSummary !== null
       ? initialProductSummary
@@ -188,13 +165,6 @@ export default function SalesListClient({
   const [bannerSuccess, setBannerSuccess] = useState<string | null>(null);
 
   const currentEntryType: SalesEntryType = activeTab === 'ADVANCE' ? 'ADVANCE' : 'SALE';
-  const totalPages = computePageCount(pageData.summary.totalCount, pageData.pageSize);
-
-  useEffect(() => {
-    if (monthCursor === '') {
-      setMonthCursor(new Date().toISOString().slice(0, 7));
-    }
-  }, [monthCursor]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -207,76 +177,84 @@ export default function SalesListClient({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [activeTab, currentEntryType, router]);
 
-  function buildSalesQuery(
+  async function fetchYearSlips(
     entryType: SalesEntryType,
-    overrides?: {
-      q?: string;
-      st?: '' | SalesStatus;
-      ap?: '' | '0' | '1' | '2';
-      from?: string;
-      to?: string;
-      pj?: 'ALL' | 'LINKED' | 'UNLINKED';
-      page?: number;
-    },
-  ): URLSearchParams {
-    const q = overrides?.q !== undefined ? overrides.q : keyword;
-    const st = overrides?.st !== undefined ? overrides.st : status;
-    const ap = overrides?.ap !== undefined ? overrides.ap : approvalFilter;
-    const from = overrides?.from !== undefined ? overrides.from : dateFrom;
-    const to = overrides?.to !== undefined ? overrides.to : dateTo;
-    const pj = overrides?.pj !== undefined ? overrides.pj : projectLink;
-    const p = overrides?.page !== undefined ? overrides.page : pageData.page;
-
-    const params = new URLSearchParams();
-    params.set('entryType', entryType);
-    if (q.trim() !== '') params.set('q', q.trim());
-    if (st !== '') params.set('status', st);
-    if (ap !== '') params.set('approvalStatus', ap);
-    if (from.trim() !== '') params.set('dateFrom', from.trim());
-    if (to.trim() !== '') params.set('dateTo', to.trim());
-    if (pj !== 'ALL') params.set('projectLink', pj);
-    params.set('page', String(p));
-    params.set('pageSize', String(pageData.pageSize));
-    return params;
-  }
-
-  async function loadSalesPage(
-    entryType: SalesEntryType,
-    overrides?: Parameters<typeof buildSalesQuery>[1],
+    year: number,
+    forceRefresh: boolean = false,
   ) {
+    const cacheKey = `${entryType}_${year}`;
+    if (!forceRefresh) {
+      const fullList = fullDatasetRef.current[entryType];
+      if (fullList !== undefined) {
+        const sliced = filterItemsByYear(fullList, year);
+        yearCacheRef.current.set(cacheKey, { items: sliced, totalCount: sliced.length });
+        setSelectedIds([]);
+        setYearItems(sliced);
+        setYearTotalCount(sliced.length);
+        return;
+      }
+
+      const cached = yearCacheRef.current.get(cacheKey);
+      if (cached !== undefined) {
+        setSelectedIds([]);
+        setYearItems(cached.items);
+        setYearTotalCount(cached.totalCount);
+        return;
+      }
+    }
+
     setLoading(true);
     setBannerError(null);
-    const params = buildSalesQuery(entryType, overrides);
+    const params = new URLSearchParams();
+    params.set('entryType', entryType);
+    params.set('dateFrom', `${year}-01-01`);
+    params.set('dateTo', `${year}-12-31`);
+    params.set('page', '1');
+    params.set('pageSize', '2000');
+
     const res = await requestMasterApi<SalesPageDto>(`/api/v1/sales?${params.toString()}`);
     setLoading(false);
     if (!res.ok) {
       setBannerError(res.error);
       return;
     }
-    setSelectedIds([]);
-    setSelectedDateFilter(null);
-    setPageData({
+
+    if (forceRefresh) {
+      delete fullDatasetRef.current[entryType];
+    }
+
+    yearCacheRef.current.set(cacheKey, {
       items: res.data.items,
-      summary: res.data.summary,
-      page: res.data.page,
-      pageSize: res.data.pageSize,
+      totalCount: res.data.summary.totalCount,
     });
+    setSelectedIds([]);
+    setYearItems(res.data.items);
+    setYearTotalCount(res.data.summary.totalCount);
   }
 
-  function buildSummaryQuery(): URLSearchParams {
+  function buildSummaryQuery(overrides?: {
+    entryTypeFilter?: 'ALL' | SalesEntryType;
+    partnerId?: string;
+    dateFrom?: string;
+    dateTo?: string;
+  }): URLSearchParams {
+    const ef = overrides?.entryTypeFilter !== undefined ? overrides.entryTypeFilter : sumEntryFilter;
+    const pid = overrides?.partnerId !== undefined ? overrides.partnerId : sumPartnerId;
+    const from = overrides?.dateFrom !== undefined ? overrides.dateFrom : sumDateFrom;
+    const to = overrides?.dateTo !== undefined ? overrides.dateTo : sumDateTo;
+
     const params = new URLSearchParams();
-    if (sumEntryFilter !== 'ALL') params.set('entryTypeFilter', sumEntryFilter);
-    if (sumPartnerId !== '') params.set('partnerId', sumPartnerId);
-    if (sumDateFrom.trim() !== '') params.set('dateFrom', sumDateFrom.trim());
-    if (sumDateTo.trim() !== '') params.set('dateTo', sumDateTo.trim());
-    if (sumKeyword.trim() !== '') params.set('q', sumKeyword.trim());
+    if (ef !== 'ALL') params.set('entryTypeFilter', ef);
+    if (pid !== '') params.set('partnerId', pid);
+    if (from.trim() !== '') params.set('dateFrom', from.trim());
+    if (to.trim() !== '') params.set('dateTo', to.trim());
     return params;
   }
 
-  async function loadProductSummary() {
+  async function loadProductSummary(overrides?: Parameters<typeof buildSummaryQuery>[0]) {
     setLoading(true);
     setBannerError(null);
-    const params = buildSummaryQuery();
+    const params = buildSummaryQuery(overrides);
     const res = await requestMasterApi<SalesProductSummaryResultDto>(
       `/api/v1/sales/product-summary?${params.toString()}`,
     );
@@ -295,36 +273,27 @@ export default function SalesListClient({
     setActiveTab(nextTab);
     setBannerError(null);
     setBannerSuccess(null);
-    setSelectedDateFilter(null);
+    setSelectedIds([]);
     if (nextTab === 'SUMMARY') {
       void loadProductSummary();
     } else {
-      void loadSalesPage(nextTab, { page: 1 });
+      setSelectedMonth(null);
+      void fetchYearSlips(nextTab, selectedYear);
     }
   }
 
-  function handleSearchSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    void loadSalesPage(currentEntryType, { page: 1 });
+  async function handleChangeYear(nextYear: number) {
+    setSelectedYear(nextYear);
+    setSelectedMonth(null);
+    await fetchYearSlips(currentEntryType, nextYear);
   }
 
   function handleResetFilters() {
     setKeyword('');
-    setStatus('');
+    setStatusFilter('');
     setApprovalFilter('');
-    setDateFrom('');
-    setDateTo('');
     setProjectLink('ALL');
-    setSelectedDateFilter(null);
-    void loadSalesPage(currentEntryType, {
-      q: '',
-      st: '',
-      ap: '',
-      from: '',
-      to: '',
-      pj: 'ALL',
-      page: 1,
-    });
+    setSelectedIds([]);
   }
 
   function handleResetSummaryFilters() {
@@ -333,132 +302,157 @@ export default function SalesListClient({
     setSumDateFrom('');
     setSumDateTo('');
     setSumKeyword('');
-    setLoading(true);
-    setBannerError(null);
-    void requestMasterApi<SalesProductSummaryResultDto>('/api/v1/sales/product-summary').then((res) => {
-      setLoading(false);
-      if (!res.ok) {
-        setBannerError(res.error);
-        return;
-      }
-      setSummaryData({
-        items: res.data.items,
-        totals: res.data.totals,
-      });
+    void loadProductSummary({
+      entryTypeFilter: 'ALL',
+      partnerId: '',
+      dateFrom: '',
+      dateTo: '',
     });
   }
 
-  function handleShiftMonth(delta: number) {
-    const activeBase =
-      dateFrom.length >= 7
-        ? dateFrom.slice(0, 7)
-        : monthCursor !== ''
-          ? monthCursor
-          : new Date().toISOString().slice(0, 7);
-    const targetMonth = dateFrom === '' && delta === 0 ? activeBase : shiftYearMonth(activeBase, delta);
-    const range = buildMonthRange(targetMonth);
-    setMonthCursor(targetMonth);
-    setDateFrom(range.from);
-    setDateTo(range.to);
-    void loadSalesPage(currentEntryType, {
-      from: range.from,
-      to: range.to,
-      page: 1,
+  // 左ペイン：1月〜12月および年間合計の集計
+  const monthlyBuckets = useMemo<MonthBucketSummary[]>(() => {
+    const buckets: MonthBucketSummary[] = Array.from({ length: 12 }, (_, idx) => {
+      const month = idx + 1;
+      return {
+        month,
+        label: `${String(month).padStart(2, '0')}月`,
+        count: 0,
+        approvedCount: 0,
+        pendingCount: 0,
+        totalAmount: 0,
+      };
     });
-  }
 
-  function handleToggleMonthScope() {
-    if (dateFrom !== '' || dateTo !== '') {
-      setDateFrom('');
-      setDateTo('');
-      void loadSalesPage(currentEntryType, { from: '', to: '', page: 1 });
-      return;
-    }
-    const targetMonth = monthCursor !== '' ? monthCursor : new Date().toISOString().slice(0, 7);
-    const range = buildMonthRange(targetMonth);
-    setMonthCursor(targetMonth);
-    setDateFrom(range.from);
-    setDateTo(range.to);
-    void loadSalesPage(currentEntryType, {
-      from: range.from,
-      to: range.to,
-      page: 1,
-    });
-  }
-
-  const dateGroups = useMemo<DateGroupSummary[]>(() => {
-    const map = new Map<string, DateGroupSummary>();
-    for (const item of pageData.items) {
-      const existing = map.get(item.slipDate);
-      const isBilled = item.status === 'K4' || item.status === 'K5';
-      const isApproved = item.approvalStatus === 1;
-      const isPending = item.approvalStatus === 0;
-      const isLinked = item.projectId !== null;
-
-      if (existing === undefined) {
-        const meta = getDateMeta(item.slipDate);
-        map.set(item.slipDate, {
-          date: item.slipDate,
-          displayDate: meta.displayDate,
-          dayOfWeek: meta.dayOfWeek,
-          isSunday: meta.isSunday,
-          isSaturday: meta.isSaturday,
-          count: 1,
-          approvedCount: isApproved ? 1 : 0,
-          pendingCount: isPending ? 1 : 0,
-          billedCount: isBilled ? 1 : 0,
-          projectLinkedCount: isLinked ? 1 : 0,
-          subtotalAmount: item.subtotalAmount,
-          taxTotal: item.taxTotal,
-          totalAmount: item.totalAmount,
-        });
-      } else {
-        existing.count += 1;
-        if (isApproved) existing.approvedCount += 1;
-        if (isPending) existing.pendingCount += 1;
-        if (isBilled) existing.billedCount += 1;
-        if (isLinked) existing.projectLinkedCount += 1;
-        existing.subtotalAmount += item.subtotalAmount;
-        existing.taxTotal += item.taxTotal;
-        existing.totalAmount += item.totalAmount;
+    for (const item of yearItems) {
+      const mNum = Number(item.slipDate.slice(5, 7));
+      if (mNum >= 1 && mNum <= 12) {
+        const bucket = buckets[mNum - 1];
+        if (bucket !== undefined) {
+          bucket.count += 1;
+          if (item.approvalStatus === 1) bucket.approvedCount += 1;
+          if (item.approvalStatus === 0) bucket.pendingCount += 1;
+          bucket.totalAmount += item.totalAmount;
+        }
       }
     }
-    return Array.from(map.values()).sort((a, b) => b.date.localeCompare(a.date));
-  }, [pageData.items]);
 
+    return buckets;
+  }, [yearItems]);
+
+  const annualSummary = useMemo(() => {
+    let totalAmount = 0;
+    let pendingCount = 0;
+    let approvedCount = 0;
+    for (const item of yearItems) {
+      totalAmount += item.totalAmount;
+      if (item.approvalStatus === 0) pendingCount += 1;
+      if (item.approvalStatus === 1) approvedCount += 1;
+    }
+    return {
+      count: yearItems.length,
+      totalAmount,
+      pendingCount,
+      approvedCount,
+    };
+  }, [yearItems]);
+
+  // 右ペイン：選択月＋リアルタイム検索＋1クリックセグメントフィルタ適用後の伝票一覧
   const displayedItems = useMemo(() => {
-    if (selectedDateFilter === null) return pageData.items;
-    return pageData.items.filter((item) => item.slipDate === selectedDateFilter);
-  }, [pageData.items, selectedDateFilter]);
+    const kw = keyword.trim().toLowerCase();
+    return yearItems.filter((item) => {
+      if (selectedMonth !== null) {
+        const mNum = Number(item.slipDate.slice(5, 7));
+        if (mNum !== selectedMonth) return false;
+      }
+      if (statusFilter !== '' && item.status !== statusFilter) return false;
+      if (approvalFilter !== '' && String(item.approvalStatus) !== approvalFilter) return false;
+      if (projectLink === 'LINKED' && item.projectId === null) return false;
+      if (projectLink === 'UNLINKED' && item.projectId !== null) return false;
 
-  const pageItemsTotals = useMemo(() => {
-    let subtotal = 0;
-    let tax = 0;
-    let total = 0;
-    for (const item of pageData.items) {
-      subtotal += item.subtotalAmount;
-      tax += item.taxTotal;
-      total += item.totalAmount;
-    }
-    return { subtotal, tax, total };
-  }, [pageData.items]);
+      if (kw !== '') {
+        const slipNoStr = String(item.slipNo);
+        const formattedNo = item.entryType === 'ADVANCE' ? `t-${slipNoStr}` : `#${slipNoStr}`;
+        const slipName = item.slipName.toLowerCase();
+        const partnerName = item.partnerName.toLowerCase();
+        const partnerCode = item.partnerCode.toLowerCase();
+        const projectName = item.projectName !== null ? item.projectName.toLowerCase() : '';
+        const projectNoStr = item.projectNo !== null ? String(item.projectNo) : '';
+        if (
+          !slipNoStr.includes(kw) &&
+          !formattedNo.includes(kw) &&
+          !slipName.includes(kw) &&
+          !partnerName.includes(kw) &&
+          !partnerCode.includes(kw) &&
+          !projectName.includes(kw) &&
+          !projectNoStr.includes(kw)
+        ) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }, [yearItems, selectedMonth, keyword, statusFilter, approvalFilter, projectLink]);
 
+  // 上部5連KPI ＆ tfoot 集計（表示中の期間・絞込条件に即時連動）
   const displayedTotals = useMemo(() => {
     let subtotal = 0;
     let tax = 0;
     let total = 0;
+    let approvedCount = 0;
+    let pendingCount = 0;
     for (const item of displayedItems) {
       subtotal += item.subtotalAmount;
       tax += item.taxTotal;
       total += item.totalAmount;
+      if (item.approvalStatus === 1) approvedCount += 1;
+      if (item.approvalStatus === 0) pendingCount += 1;
     }
-    return { subtotal, tax, total };
+    return { subtotal, tax, total, approvedCount, pendingCount };
   }, [displayedItems]);
 
   const approvalRateText =
-    pageData.summary.totalCount > 0
-      ? `${((pageData.summary.approvedCount / pageData.summary.totalCount) * 100).toFixed(1)}%`
+    displayedItems.length > 0
+      ? `${((displayedTotals.approvedCount / displayedItems.length) * 100).toFixed(1)}%`
       : '0.0%';
+
+  // SUMMARY タブ：リアルタイムキーワード絞込
+  const displayedSummaryItems = useMemo(() => {
+    const kw = sumKeyword.trim().toLowerCase();
+    if (kw === '') return summaryData.items;
+    return summaryData.items.filter((row) => {
+      const codeMatch = row.itemCode !== null && row.itemCode.toLowerCase().includes(kw);
+      const nameMatch = row.itemName.toLowerCase().includes(kw);
+      return codeMatch || nameMatch;
+    });
+  }, [summaryData.items, sumKeyword]);
+
+  const displayedSummaryTotals = useMemo(() => {
+    let exclAmount = 0;
+    let taxAmount = 0;
+    let inclAmount = 0;
+    for (const row of displayedSummaryItems) {
+      exclAmount += row.exclAmount;
+      taxAmount += row.taxAmount;
+      inclAmount += row.inclAmount;
+    }
+    return {
+      rowCount: displayedSummaryItems.length,
+      exclAmount,
+      taxAmount,
+      inclAmount,
+    };
+  }, [displayedSummaryItems]);
+
+  const hasActiveFilters =
+    keyword !== '' || statusFilter !== '' || approvalFilter !== '' || projectLink !== 'ALL';
+
+  const hasActiveSummaryFilters =
+    sumEntryFilter !== 'ALL' ||
+    sumPartnerId !== '' ||
+    sumDateFrom !== '' ||
+    sumDateTo !== '' ||
+    sumKeyword !== '';
 
   function toggleRowSelect(id: string) {
     setSelectedIds((prev) =>
@@ -498,7 +492,7 @@ export default function SalesListClient({
     setBannerSuccess(
       `${res.data.updatedCount}件の伝票を「${APPROVAL_STATUS_LABELS[approvalStatus]}」に更新しました。`,
     );
-    await loadSalesPage(currentEntryType);
+    await fetchYearSlips(currentEntryType, selectedYear, true);
   }
 
   async function handleDelete(item: SalesListItemDto) {
@@ -522,14 +516,18 @@ export default function SalesListClient({
       return;
     }
     setBannerSuccess(`${ENTRY_TYPE_LABELS[item.entryType]} #${item.slipNo} を削除しました。`);
-    await loadSalesPage(currentEntryType);
+    await fetchYearSlips(currentEntryType, selectedYear, true);
   }
 
   function getSalesExportUrl(format: 'csv' | 'pdf'): string {
-    const params = buildSalesQuery(currentEntryType, { page: 1 });
-    params.delete('entryType');
-    params.delete('page');
-    params.delete('pageSize');
+    const params = new URLSearchParams();
+    const range = buildYearRange(selectedYear, selectedMonth);
+    params.set('dateFrom', range.from);
+    params.set('dateTo', range.to);
+    if (keyword.trim() !== '') params.set('q', keyword.trim());
+    if (statusFilter !== '') params.set('status', statusFilter);
+    if (approvalFilter !== '') params.set('approvalStatus', approvalFilter);
+    if (projectLink !== 'ALL') params.set('projectLink', projectLink);
     params.set('kind', currentEntryType);
     params.set('format', format);
     return `/api/v1/sales/export?${params.toString()}`;
@@ -537,24 +535,16 @@ export default function SalesListClient({
 
   function getSummaryExportUrl(format: 'csv' | 'pdf'): string {
     const params = buildSummaryQuery();
+    if (sumKeyword.trim() !== '') params.set('q', sumKeyword.trim());
     params.set('kind', 'PRODUCT_SUMMARY');
     params.set('format', format);
     return `/api/v1/sales/export?${params.toString()}`;
   }
 
-  const activeMonthLabel =
-    dateFrom !== '' && dateTo !== ''
-      ? dateFrom.slice(0, 7).replace('-', '/')
-      : dateFrom !== ''
-        ? `${dateFrom.replace(/-/g, '/')}〜`
-        : dateTo !== ''
-          ? `〜${dateTo.replace(/-/g, '/')}`
-          : '全期間';
-
-  const selectedDateDisplay =
-    selectedDateFilter !== null
-      ? `${selectedDateFilter.replace(/-/g, '/')} (${getDateMeta(selectedDateFilter).dayOfWeek})`
-      : '全表示（選択頁）';
+  const periodScopeLabel =
+    selectedMonth !== null
+      ? `${selectedYear}年${String(selectedMonth).padStart(2, '0')}月`
+      : `${selectedYear}年 通年`;
 
   const selectableCount = displayedItems.filter(
     (i) => i.status !== 'K4' && i.status !== 'K5',
@@ -563,7 +553,7 @@ export default function SalesListClient({
   return (
     <div className="-m-6 min-h-[calc(100vh-3.5rem)] lg:h-[calc(100vh-3.5rem)] flex flex-col bg-[#F0F0FF] text-[#1F1F5C] antialiased lg:overflow-hidden select-none">
       {/* ========================================================= */}
-      {/* 画面トップバー（cabacc PageHeader スタイル × #9999FF 基準濃淡） */}
+      {/* 画面トップバー */}
       {/* ========================================================= */}
       <header className="h-14 bg-white border-b-2 border-[#9999FF] px-4 sm:px-6 flex items-center justify-between gap-3 shrink-0 shadow-2xs z-20">
         <div className="flex items-center gap-3 min-w-0">
@@ -634,7 +624,7 @@ export default function SalesListClient({
           </nav>
         </div>
 
-        {/* 右側アクションボタン群（角丸ボタン統一） */}
+        {/* 右側アクションボタン群（角丸ボタン） */}
         <div className="flex items-center gap-2 shrink-0">
           {activeTab === 'SUMMARY' ? (
             <>
@@ -758,7 +748,7 @@ export default function SalesListClient({
         {activeTab !== 'SUMMARY' ? (
           <>
             {/* ------------------------------------------------------- */}
-            {/* KPI サマリカード行（cabacc 5カード構成 × #9999FF 基準濃淡） */}
+            {/* KPI サマリカード行（期間・リアルタイム絞込に連動） */}
             {/* ------------------------------------------------------- */}
             <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 shrink-0">
               {/* 1. ダークヒーローカード: 税込合計金額 */}
@@ -766,15 +756,15 @@ export default function SalesListClient({
                 <div className="flex items-center justify-between text-xs font-bold text-[#CCCCFF]">
                   <span>💰 税込合計金額</span>
                   <span className="px-2 py-0.5 rounded-full bg-[#7878FF]/45 text-[10px] font-mono text-white">
-                    {currentEntryType === 'ADVANCE' ? '立替' : '売上'}
+                    {selectedMonth !== null ? `${selectedMonth}月` : '通年'}
                   </span>
                 </div>
                 <div className="mt-1.5 text-2xl font-black font-mono tabular-nums tracking-tight text-white">
-                  {formatYen(pageData.summary.totalAmount)}
+                  {formatYen(displayedTotals.total)}
                 </div>
                 <div className="mt-1 text-[11px] text-[#B3B3FF] font-mono flex items-center justify-between">
-                  <span>対象: {pageData.summary.totalCount}件</span>
-                  <span className="text-[#E6E6FF]">表示: {displayedItems.length}件</span>
+                  <span>対象: {displayedItems.length}件</span>
+                  <span className="text-[#E6E6FF]">{periodScopeLabel}</span>
                 </div>
               </div>
 
@@ -782,14 +772,20 @@ export default function SalesListClient({
               <div className="bg-white rounded-xl px-4 py-3 border-2 border-[#B3B3FF] text-[#1F1F5C] shadow-2xs flex flex-col justify-between">
                 <div className="flex items-center justify-between text-xs font-bold text-[#4D4DB3]">
                   <span>💴 税抜金額合計</span>
-                  <span className="text-[10px] font-mono text-[#7878FF]">EXCL</span>
+                  <span className="px-2 py-0.5 rounded-full bg-[#F0F0FF] text-[10px] font-mono text-[#4D4DB3] border border-[#CCCCFF]">
+                    EXCL
+                  </span>
                 </div>
                 <div className="mt-1.5 text-xl xl:text-2xl font-black font-mono tabular-nums tracking-tight text-[#1F1F5C]">
-                  {formatYen(pageData.summary.subtotalAmount)}
+                  {formatYen(displayedTotals.subtotal)}
                 </div>
                 <div className="mt-1 text-[11px] text-[#666699] font-mono flex items-center justify-between">
-                  <span>表示分税抜</span>
-                  <span>{formatYen(displayedTotals.subtotal)}</span>
+                  <span>年間税抜</span>
+                  <span>
+                    {formatYen(
+                      yearItems.reduce((acc, item) => acc + item.subtotalAmount, 0),
+                    )}
+                  </span>
                 </div>
               </div>
 
@@ -797,110 +793,97 @@ export default function SalesListClient({
               <div className="bg-white rounded-xl px-4 py-3 border-2 border-[#B3B3FF] text-[#1F1F5C] shadow-2xs flex flex-col justify-between">
                 <div className="flex items-center justify-between text-xs font-bold text-[#4D4DB3]">
                   <span>🧮 消費税合計</span>
-                  <span className="text-[10px] font-mono text-[#7878FF]">TAX</span>
+                  <span className="px-2 py-0.5 rounded-full bg-[#F0F0FF] text-[10px] font-mono text-[#4D4DB3] border border-[#CCCCFF]">
+                    TAX
+                  </span>
                 </div>
                 <div className="mt-1.5 text-xl xl:text-2xl font-black font-mono tabular-nums tracking-tight text-[#1F1F5C]">
-                  {formatYen(pageData.summary.taxTotal)}
+                  {formatYen(displayedTotals.tax)}
                 </div>
                 <div className="mt-1 text-[11px] text-[#666699] font-mono flex items-center justify-between">
-                  <span>表示分税額</span>
-                  <span>{formatYen(displayedTotals.tax)}</span>
+                  <span>年間税額</span>
+                  <span>
+                    {formatYen(yearItems.reduce((acc, item) => acc + item.taxTotal, 0))}
+                  </span>
                 </div>
               </div>
 
-              {/* 4. 承認済件数 */}
-              <div className="bg-white rounded-xl px-4 py-3 border-2 border-[#B3B3FF] text-[#1F1F5C] shadow-2xs flex flex-col justify-between">
-                <div className="flex items-center justify-between text-xs font-bold text-[#4D4DB3]">
+              {/* 4. 承認済件数（クリックで承認済フィルタ切替） */}
+              <button
+                type="button"
+                onClick={() =>
+                  setApprovalFilter((prev) => (prev === '1' ? '' : '1'))
+                }
+                title="クリックで承認済伝票のみ表示 / 解除"
+                className={`text-left rounded-xl px-4 py-3 transition flex flex-col justify-between cursor-pointer ${
+                  approvalFilter === '1'
+                    ? 'bg-emerald-50/70 border-2 border-emerald-500 ring-2 ring-emerald-200 shadow-xs'
+                    : 'bg-white border-2 border-[#B3B3FF] hover:border-[#7878FF] shadow-2xs'
+                }`}
+              >
+                <div className="flex items-center justify-between text-xs font-bold text-[#4D4DB3] w-full">
                   <span>✅ 承認済伝票</span>
-                  <span className="text-[10px] font-mono text-emerald-700">APPROVED</span>
+                  <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-[10px] font-mono text-emerald-800 border border-emerald-300">
+                    APPROVED
+                  </span>
                 </div>
                 <div className="mt-1.5 text-xl xl:text-2xl font-black font-mono tabular-nums tracking-tight text-emerald-700">
-                  {pageData.summary.approvedCount}{' '}
+                  {displayedTotals.approvedCount}{' '}
                   <span className="text-xs font-sans font-bold text-[#666699]">件</span>
                 </div>
-                <div className="mt-1 text-[11px] text-[#666699] font-mono flex items-center justify-between">
-                  <span>承認率</span>
-                  <span className="font-bold text-[#333399]">{approvalRateText}</span>
+                <div className="mt-1 text-[11px] text-[#666699] font-mono flex items-center justify-between w-full">
+                  <span>承認率 {approvalRateText}</span>
+                  <span className="text-[10px] font-sans text-[#4D4DB3]">
+                    {approvalFilter === '1' ? '絞込中' : 'クリックで絞込'}
+                  </span>
                 </div>
-              </div>
+              </button>
 
-              {/* 5. 未承認・確認待件数 */}
-              <div className="bg-white rounded-xl px-4 py-3 border-2 border-[#B3B3FF] text-[#1F1F5C] shadow-2xs flex flex-col justify-between">
-                <div className="flex items-center justify-between text-xs font-bold text-[#4D4DB3]">
+              {/* 5. 未承認・確認待件数（クリックで未承認フィルタ切替） */}
+              <button
+                type="button"
+                onClick={() =>
+                  setApprovalFilter((prev) => (prev === '0' ? '' : '0'))
+                }
+                title="クリックで未承認伝票のみ表示 / 解除"
+                className={`text-left rounded-xl px-4 py-3 transition flex flex-col justify-between cursor-pointer ${
+                  approvalFilter === '0'
+                    ? 'bg-[#FEE2E2]/45 border-2 border-[#C00000] ring-2 ring-[#FCA5A5] shadow-xs'
+                    : 'bg-white border-2 border-[#B3B3FF] hover:border-[#7878FF] shadow-2xs'
+                }`}
+              >
+                <div className="flex items-center justify-between text-xs font-bold text-[#4D4DB3] w-full">
                   <span>⏳ 未承認・確認待</span>
-                  <span className="text-[10px] font-mono text-[#7878FF]">PENDING</span>
+                  <span className="px-2 py-0.5 rounded-full bg-[#F0F0FF] text-[10px] font-mono text-[#4D4DB3] border border-[#CCCCFF]">
+                    PENDING
+                  </span>
                 </div>
                 <div
                   className={`mt-1.5 text-xl xl:text-2xl font-black font-mono tabular-nums tracking-tight ${
-                    pageData.summary.pendingCount > 0 ? 'text-[#C00000]' : 'text-[#1F1F5C]'
+                    displayedTotals.pendingCount > 0 ? 'text-[#C00000]' : 'text-[#1F1F5C]'
                   }`}
                 >
-                  {pageData.summary.pendingCount}{' '}
+                  {displayedTotals.pendingCount}{' '}
                   <span className="text-xs font-sans font-bold text-[#666699]">件</span>
                 </div>
-                <div className="mt-1 text-[11px] text-[#666699] font-mono flex items-center justify-between">
-                  <span>選択中</span>
-                  <span className="font-bold text-[#5252CC]">{selectedIds.length} 件</span>
+                <div className="mt-1 text-[11px] text-[#666699] font-mono flex items-center justify-between w-full">
+                  <span>選択中 {selectedIds.length}件</span>
+                  <span className="text-[10px] font-sans text-[#4D4DB3]">
+                    {approvalFilter === '0' ? '絞込中' : 'クリックで絞込'}
+                  </span>
                 </div>
-              </div>
+              </button>
             </div>
 
             {/* ------------------------------------------------------- */}
-            {/* 常設コントロール ＆ 検索バー（cabacc スタイル × #9999FF 基準濃淡） */}
+            {/* 中間コントロールバー（1行完結：リアルタイム検索＋1クリックセグメントボタン） */}
             {/* ------------------------------------------------------- */}
-            <form
-              onSubmit={handleSearchSubmit}
-              className="relative bg-white pl-4 pr-3.5 py-2.5 rounded-xl border-2 border-[#9999FF] shadow-2xs flex flex-wrap items-center justify-between gap-2.5 shrink-0"
-            >
+            <div className="relative bg-white pl-4 pr-3 py-2 rounded-xl border-2 border-[#9999FF] shadow-2xs flex flex-wrap xl:flex-nowrap items-center justify-between gap-2 shrink-0 min-h-[50px]">
               <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-[#7878FF] rounded-l-xl" />
 
-              <div className="flex flex-wrap items-center gap-2 min-w-0">
-                {/* 月送りナビゲーション */}
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => handleShiftMonth(-1)}
-                    disabled={loading}
-                    className="h-8 px-3 rounded-lg bg-gradient-to-b from-white via-[#F0F0FF] to-[#CCCCFF] hover:to-[#B3B3FF] text-[#333399] border border-[#9999FF] font-bold text-xs transition transform hover:-translate-y-0.5 active:translate-y-px flex items-center gap-1 cursor-pointer disabled:opacity-50"
-                    title="前月へ"
-                  >
-                    <span>◀ 前月</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleToggleMonthScope}
-                    disabled={loading}
-                    title={
-                      dateFrom !== '' || dateTo !== ''
-                        ? 'クリックで全期間表示に戻す'
-                        : 'クリックで当月で絞り込む'
-                    }
-                    className="h-8 px-3 rounded-lg border border-[#7878FF] bg-[#F0F0FF] hover:bg-[#D6D6FF] text-xs font-mono font-black text-[#1F1F5C] inline-flex items-center gap-1.5 cursor-pointer transition shadow-2xs"
-                  >
-                    <span>📅</span>
-                    <span>{activeMonthLabel}</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleShiftMonth(1)}
-                    disabled={loading}
-                    className="h-8 px-3 rounded-lg bg-gradient-to-b from-white via-[#F0F0FF] to-[#CCCCFF] hover:to-[#B3B3FF] text-[#333399] border border-[#9999FF] font-bold text-xs transition transform hover:-translate-y-0.5 active:translate-y-px flex items-center gap-1 cursor-pointer disabled:opacity-50"
-                    title="翌月へ"
-                  >
-                    <span>翌月 ▶</span>
-                  </button>
-                </div>
-
-                {loading && (
-                  <span className="inline-flex items-center gap-1 text-xs font-bold bg-[#CCCCFF] text-[#1F1F5C] border border-[#7878FF] px-2.5 py-1 rounded-full animate-pulse">
-                    読込中...
-                  </span>
-                )}
-
-                <span className="text-[#B3B3FF] hidden xl:inline">|</span>
-
-                {/* キーワード検索 */}
-                <div className="relative w-52 sm:w-60">
+              <div className="flex flex-wrap items-center gap-2 min-w-0 flex-1">
+                {/* 1. リアルタイム検索入力 */}
+                <div className="relative w-48 xl:w-52 shrink-0">
                   <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-[#5252CC]">
                     🔍
                   </span>
@@ -908,94 +891,121 @@ export default function SalesListClient({
                     type="text"
                     value={keyword}
                     onChange={(e) => setKeyword(e.target.value)}
-                    placeholder="伝票No・件名・取引先・案件..."
-                    className="w-full h-8 pl-7 pr-2.5 text-xs bg-white border border-[#9999FF] hover:border-[#7878FF] rounded-lg focus:border-[#5252CC] focus:ring-2 focus:ring-[#9999FF]/35 focus:outline-hidden font-semibold text-[#1F1F5C] placeholder:text-[#666699] placeholder:font-normal"
+                    placeholder="伝票No・件名・取引先..."
+                    aria-label="リアルタイム検索"
+                    className="w-full h-8 pl-7 pr-7 text-xs bg-white border border-[#9999FF] hover:border-[#7878FF] rounded-lg focus:border-[#5252CC] focus:ring-2 focus:ring-[#9999FF]/35 focus:outline-hidden font-semibold text-[#1F1F5C] placeholder:text-[#666699] placeholder:font-normal"
                   />
+                  {keyword !== '' && (
+                    <button
+                      type="button"
+                      onClick={() => setKeyword('')}
+                      title="入力をクリア"
+                      className="absolute right-1.5 top-1/2 -translate-y-1/2 h-5 w-5 rounded flex items-center justify-center text-[11px] text-[#666699] hover:text-[#1F1F5C] hover:bg-[#E6E6FF] cursor-pointer"
+                    >
+                      ✕
+                    </button>
+                  )}
                 </div>
 
-                {/* ステータス・承認・日付・案件紐付 */}
-                <select
-                  aria-label="ステータス"
-                  value={status}
-                  onChange={(e) => setStatus(e.target.value as '' | SalesStatus)}
-                  className="h-8 rounded-lg border border-[#9999FF] hover:border-[#7878FF] focus:border-[#5252CC] bg-white px-2 text-xs font-semibold text-[#1F1F5C]"
-                >
-                  <option value="">状態: すべて</option>
-                  {(Object.keys(SALES_STATUS_LABELS) as SalesStatus[]).map((st) => (
-                    <option key={st} value={st}>
-                      {st}: {SALES_STATUS_LABELS[st]}
-                    </option>
-                  ))}
-                </select>
-
-                <select
-                  aria-label="承認状態"
-                  value={approvalFilter}
-                  onChange={(e) => setApprovalFilter(e.target.value as '' | '0' | '1' | '2')}
-                  className="h-8 rounded-lg border border-[#9999FF] hover:border-[#7878FF] focus:border-[#5252CC] bg-white px-2 text-xs font-semibold text-[#1F1F5C]"
-                >
-                  <option value="">承認: すべて</option>
-                  <option value="0">未承認</option>
-                  <option value="1">承認済</option>
-                  <option value="2">差戻し</option>
-                </select>
-
-                <select
-                  aria-label="案件紐付"
-                  value={projectLink}
-                  onChange={(e) => setProjectLink(e.target.value as 'ALL' | 'LINKED' | 'UNLINKED')}
-                  className="h-8 rounded-lg border border-[#9999FF] hover:border-[#7878FF] focus:border-[#5252CC] bg-white px-2 text-xs font-semibold text-[#1F1F5C]"
-                >
-                  <option value="ALL">案件: すべて</option>
-                  <option value="LINKED">案件あり</option>
-                  <option value="UNLINKED">案件なし</option>
-                </select>
-
-                <div className="flex items-center gap-1">
-                  <input
-                    aria-label="売上日From"
-                    type="date"
-                    value={dateFrom}
-                    onChange={(e) => setDateFrom(e.target.value)}
-                    className="h-8 rounded-lg border border-[#9999FF] focus:border-[#5252CC] px-2 text-xs font-mono text-[#1F1F5C] bg-white"
-                  />
-                  <span className="text-xs text-[#666699]">〜</span>
-                  <input
-                    aria-label="売上日To"
-                    type="date"
-                    value={dateTo}
-                    onChange={(e) => setDateTo(e.target.value)}
-                    className="h-8 rounded-lg border border-[#9999FF] focus:border-[#5252CC] px-2 text-xs font-mono text-[#1F1F5C] bg-white"
-                  />
+                {/* 2. ステータス セグメントボタン（K1〜K6コード表記なし） */}
+                <div className="flex items-center gap-1 shrink-0">
+                  <span className="text-[11px] font-bold text-[#4D4DB3]">状態:</span>
+                  <div className="inline-flex items-center rounded-lg bg-[#F0F0FF] p-0.5 border border-[#B3B3FF]">
+                    <button
+                      type="button"
+                      onClick={() => setStatusFilter('')}
+                      className={`px-2 py-1 rounded-md text-[11px] font-bold transition whitespace-nowrap cursor-pointer ${
+                        statusFilter === ''
+                          ? 'bg-gradient-to-b from-[#7878FF] to-[#5252CC] text-white shadow-2xs'
+                          : 'text-[#333399] hover:bg-[#D6D6FF]/70'
+                      }`}
+                    >
+                      すべて
+                    </button>
+                    {STATUS_FILTER_ORDER.map((st) => (
+                      <button
+                        key={st}
+                        type="button"
+                        onClick={() =>
+                          setStatusFilter((prev) => (prev === st ? '' : st))
+                        }
+                        className={`px-2 py-1 rounded-md text-[11px] font-bold transition whitespace-nowrap cursor-pointer ${
+                          statusFilter === st
+                            ? 'bg-gradient-to-b from-[#7878FF] to-[#5252CC] text-white shadow-2xs'
+                            : 'text-[#333399] hover:bg-[#D6D6FF]/70'
+                        }`}
+                      >
+                        {SALES_STATUS_LABELS[st]}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
-                {/* 検索 (#9999FF濃色) & クリア (#9999FF淡色) */}
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="h-8 px-4 rounded-lg bg-gradient-to-b from-[#5C5CD6] to-[#333399] hover:from-[#7878FF] hover:to-[#4747B3] text-white border border-[#242466] text-xs font-bold shadow-xs cursor-pointer transition disabled:opacity-50"
-                >
-                  {loading ? '検索中...' : '検索'}
-                </button>
-                <button
-                  type="button"
-                  onClick={handleResetFilters}
-                  disabled={loading}
-                  className="h-8 px-3.5 rounded-lg bg-gradient-to-b from-white via-[#F0F0FF] to-[#CCCCFF] hover:to-[#B3B3FF] text-[#333399] border border-[#9999FF] text-xs font-bold shadow-2xs cursor-pointer transition disabled:opacity-50"
-                >
-                  クリア
-                </button>
+                {/* 3. 承認状態 セグメントボタン */}
+                <div className="flex items-center gap-1 shrink-0">
+                  <span className="text-[11px] font-bold text-[#4D4DB3]">承認:</span>
+                  <div className="inline-flex items-center rounded-lg bg-[#F0F0FF] p-0.5 border border-[#B3B3FF]">
+                    {APPROVAL_FILTER_OPTIONS.map((opt) => (
+                      <button
+                        key={opt.label}
+                        type="button"
+                        onClick={() =>
+                          setApprovalFilter((prev) =>
+                            opt.value !== '' && prev === opt.value ? '' : opt.value,
+                          )
+                        }
+                        className={`px-2 py-1 rounded-md text-[11px] font-bold transition whitespace-nowrap cursor-pointer ${
+                          approvalFilter === opt.value
+                            ? 'bg-gradient-to-b from-[#7878FF] to-[#5252CC] text-white shadow-2xs'
+                            : 'text-[#333399] hover:bg-[#D6D6FF]/70'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 4. 案件紐付 セグメントボタン */}
+                <div className="flex items-center gap-1 shrink-0">
+                  <span className="text-[11px] font-bold text-[#4D4DB3]">案件:</span>
+                  <div className="inline-flex items-center rounded-lg bg-[#F0F0FF] p-0.5 border border-[#B3B3FF]">
+                    {PROJECT_LINK_OPTIONS.map((opt) => (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => setProjectLink(opt.value)}
+                        className={`px-2 py-1 rounded-md text-[11px] font-bold transition whitespace-nowrap cursor-pointer ${
+                          projectLink === opt.value
+                            ? 'bg-gradient-to-b from-[#7878FF] to-[#5252CC] text-white shadow-2xs'
+                            : 'text-[#333399] hover:bg-[#D6D6FF]/70'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
 
-              {/* 右側: 表示日・件数バッジ */}
-              <div className="hidden xl:flex items-center gap-2 px-3 h-8 rounded-lg bg-[#F0F0FF] border border-[#B3B3FF] text-xs shrink-0">
-                <span className="text-[11px] text-[#4D4DB3] font-medium">表示日:</span>
-                <span className="font-mono font-bold text-[#1F1F5C]">{selectedDateDisplay}</span>
-                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-black bg-[#CCCCFF] text-[#1F1F5C] border border-[#7878FF]">
-                  全 {pageData.summary.totalCount} 伝票
-                </span>
+              {/* 右端：条件解除（絞込中のみ表示）または読込中バッジ */}
+              <div className="flex items-center gap-2 shrink-0">
+                {loading && (
+                  <span className="inline-flex items-center gap-1 text-[11px] font-bold bg-[#CCCCFF] text-[#1F1F5C] border border-[#7878FF] px-2.5 py-0.5 rounded-full animate-pulse">
+                    読込中...
+                  </span>
+                )}
+                {hasActiveFilters && (
+                  <button
+                    type="button"
+                    onClick={handleResetFilters}
+                    className="h-7 px-2.5 rounded-md border border-[#9999FF] bg-white hover:bg-[#E6E6FF] text-[11px] font-bold text-[#333399] cursor-pointer transition whitespace-nowrap"
+                  >
+                    条件解除
+                  </button>
+                )}
               </div>
-            </form>
+            </div>
 
             {/* 一括承認操作バー */}
             {selectedIds.length > 0 && (
@@ -1040,133 +1050,150 @@ export default function SalesListClient({
             )}
 
             {/* ========================================================= */}
-            {/* 2ペイン領域（左: 日別サマリカードリスト / 右: 伝票一覧テーブル） */}
+            {/* 2ペイン領域（左: 売上月別一覧[年移動+年間計+1〜12月] / 右: 伝票一覧テーブル） */}
             {/* ========================================================= */}
             <div className="flex-1 min-h-[440px] flex flex-col lg:flex-row gap-3.5 lg:overflow-hidden">
-              {/* 1. 左サイドバー: 売上日別一覧カード */}
-              <aside className="w-full lg:w-64 xl:w-72 bg-white rounded-xl border-2 border-[#9999FF] shadow-2xs flex flex-col shrink-0 overflow-hidden max-h-64 lg:max-h-none lg:h-full">
-                {/* サイドバーヘッダ */}
-                <div className="h-9 bg-gradient-to-r from-[#7878FF] via-[#6666D9] to-[#7878FF] text-white border-b border-[#5252CC] px-3 flex items-center justify-between font-bold text-xs shrink-0">
-                  <span className="flex items-center gap-1.5">
-                    <span>📅</span>
-                    <span>売上日別一覧</span>
-                  </span>
-                  <span className="px-2 py-0.5 rounded-full bg-[#E6E6FF] text-[#1F1F5C] font-mono font-black text-[10px] border border-[#333399]/20">
-                    {pageData.items.length}件
-                  </span>
-                </div>
-
-                {/* 日付カードリスト */}
-                <div className="flex-1 min-h-0 overflow-y-auto p-1.5 space-y-1 divide-y divide-[#F0F0FF]">
-                  {/* 先頭: 全表示カード */}
+              {/* 1. 左サイドバー: 売上月別一覧 */}
+              <aside className="w-full lg:w-64 xl:w-72 bg-white rounded-xl border-2 border-[#9999FF] shadow-2xs flex flex-col shrink-0 overflow-hidden max-h-72 lg:max-h-none lg:h-full">
+                {/* 年移動統合ヘッダ（背景と同化しない高コントラスト立体ボタン） */}
+                <div className="h-10 bg-gradient-to-r from-[#2B2B80] via-[#333399] to-[#2B2B80] border-b border-[#19194D] px-2.5 flex items-center justify-between shrink-0 gap-1.5">
                   <button
                     type="button"
-                    onClick={() => setSelectedDateFilter(null)}
-                    className={`w-full text-left p-2 rounded-lg transition border flex flex-col justify-between cursor-pointer ${
-                      selectedDateFilter === null
-                        ? 'bg-[#CCCCFF]/75 border-[#7878FF] shadow-2xs'
-                        : 'bg-white border-transparent hover:bg-[#F0F0FF] hover:border-[#CCCCFF]'
+                    onClick={() => void handleChangeYear(selectedYear - 1)}
+                    disabled={loading}
+                    title="前年へ"
+                    className="h-7 px-2.5 rounded-md bg-gradient-to-b from-white via-[#F0F0FF] to-[#CCCCFF] hover:from-white hover:to-[#B3B3FF] text-[#1F1F5C] font-black text-[11px] border border-white/90 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_3px_rgba(0,0,0,0.25)] cursor-pointer transition active:translate-y-px disabled:opacity-50 shrink-0"
+                  >
+                    ◀ 前年
+                  </button>
+                  <div className="flex items-center gap-1 text-white font-mono font-black text-sm tracking-tight">
+                    <span>📅</span>
+                    <span>{selectedYear}年</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void handleChangeYear(selectedYear + 1)}
+                    disabled={loading}
+                    title="翌年へ"
+                    className="h-7 px-2.5 rounded-md bg-gradient-to-b from-white via-[#F0F0FF] to-[#CCCCFF] hover:from-white hover:to-[#B3B3FF] text-[#1F1F5C] font-black text-[11px] border border-white/90 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_3px_rgba(0,0,0,0.25)] cursor-pointer transition active:translate-y-px disabled:opacity-50 shrink-0"
+                  >
+                    翌年 ▶
+                  </button>
+                </div>
+
+                {/* 先頭行：通年合計 ＋ 1月〜12月カードリスト */}
+                <div className="flex-1 min-h-0 overflow-y-auto p-1.5 space-y-1">
+                  {/* 先頭固定: 選択年の通年合計行 */}
+                  <button
+                    type="button"
+                    onClick={() => setSelectedMonth(null)}
+                    className={`w-full text-left p-2.5 rounded-lg transition border-2 flex flex-col justify-between cursor-pointer ${
+                      selectedMonth === null
+                        ? 'bg-[#CCCCFF]/85 border-[#7878FF] shadow-xs'
+                        : 'bg-[#F5F5FF] border-[#CCCCFF] hover:bg-[#E6E6FF] hover:border-[#9999FF]'
                     }`}
                   >
                     <div className="flex items-center justify-between gap-1">
-                      <div className="flex items-center gap-1.5">
-                        <span
-                          className={`w-2 h-2 rounded-full shrink-0 ${
-                            selectedDateFilter === null ? 'bg-[#5252CC]' : 'bg-[#CCCCFF]'
-                          }`}
-                        />
-                        <span className="font-bold text-xs text-[#1F1F5C]">
-                          📋 すべて表示（頁内全件）
-                        </span>
-                      </div>
-                      <span className="px-2 py-0.5 rounded-full font-mono text-[10px] font-bold bg-[#7878FF] text-white">
-                        {pageData.items.length}件
+                      <span className="font-black text-xs text-[#1F1F5C]">
+                        📊 {selectedYear}年 通年合計
+                      </span>
+                      <span className="px-2 py-0.5 rounded-full font-mono text-[10px] font-black bg-[#333399] text-white shrink-0">
+                        全 {annualSummary.count}件
                       </span>
                     </div>
                     <div className="mt-1 flex items-center justify-between text-[11px] font-mono">
-                      <span className="text-[10px] text-[#4D4DB3] font-sans">
-                        ページ {pageData.page} / {totalPages}
+                      <span className="text-[10px] font-sans font-bold text-[#4D4DB3]">
+                        {annualSummary.pendingCount > 0
+                          ? `未承認 ${annualSummary.pendingCount}件`
+                          : `承認済 ${annualSummary.approvedCount}件`}
                       </span>
-                      <span className="font-black text-xs text-[#1F1F5C] tabular-nums">
-                        {formatYen(pageItemsTotals.total)}
+                      <span className="font-black text-sm text-[#19194D] tabular-nums">
+                        {formatYen(annualSummary.totalAmount)}
                       </span>
                     </div>
                   </button>
 
-                  {dateGroups.map((group) => {
-                    const isSelected = selectedDateFilter === group.date;
-                    return (
-                      <button
-                        key={group.date}
-                        type="button"
-                        onClick={() =>
-                          setSelectedDateFilter((prev) =>
-                            prev === group.date ? null : group.date,
-                          )
-                        }
-                        title={`${group.displayDate} (${group.dayOfWeek}) の伝票を表示`}
-                        className={`w-full text-left p-2 rounded-lg transition border flex flex-col justify-between cursor-pointer ${
-                          isSelected
-                            ? 'bg-[#CCCCFF]/75 border-[#7878FF] shadow-2xs'
-                            : 'bg-white border-transparent hover:bg-[#F0F0FF] hover:border-[#CCCCFF]'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between gap-1">
-                          <div className="flex items-center gap-1.5 truncate">
+                  <div className="border-t border-[#D6D6FF] pt-1 space-y-1">
+                    {monthlyBuckets.map((bucket) => {
+                      const isSelected = selectedMonth === bucket.month;
+                      const isEmpty = bucket.count === 0;
+                      return (
+                        <button
+                          key={bucket.month}
+                          type="button"
+                          onClick={() =>
+                            setSelectedMonth((prev) =>
+                              prev === bucket.month ? null : bucket.month,
+                            )
+                          }
+                          title={`${selectedYear}年${bucket.label} の伝票を表示`}
+                          className={`w-full text-left px-2.5 py-2 rounded-lg transition border flex items-center justify-between gap-2 cursor-pointer ${
+                            isSelected
+                              ? 'bg-[#CCCCFF]/80 border-[#7878FF] shadow-2xs ring-1 ring-[#7878FF]/40'
+                              : isEmpty
+                                ? 'bg-white border-transparent opacity-60 hover:opacity-100 hover:bg-[#F5F5FF] hover:border-[#D6D6FF]'
+                                : 'bg-white border-transparent hover:bg-[#F0F0FF] hover:border-[#CCCCFF]'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
                             <span
                               className={`w-2 h-2 rounded-full shrink-0 ${
                                 isSelected
                                   ? 'bg-[#333399]'
-                                  : group.pendingCount > 0
-                                    ? 'bg-[#7878FF]'
-                                    : 'bg-[#9999FF]'
+                                  : bucket.pendingCount > 0
+                                    ? 'bg-[#C00000]'
+                                    : bucket.count > 0
+                                      ? 'bg-[#7878FF]'
+                                      : 'bg-[#D6D6FF]'
                               }`}
                             />
-                            <span className="font-mono font-black text-xs text-[#1F1F5C]">
-                              {group.displayDate}
-                            </span>
-                            <span
-                              className={`text-[10px] font-sans font-bold ${
-                                group.isSunday
-                                  ? 'text-[#C00000]'
-                                  : group.isSaturday
-                                    ? 'text-[#333399]'
-                                    : 'text-[#666699]'
-                              }`}
-                            >
-                              ({group.dayOfWeek})
-                            </span>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-mono font-black text-xs text-[#1F1F5C]">
+                                  {bucket.label}
+                                </span>
+                                {bucket.pendingCount > 0 && (
+                                  <span className="text-[10px] font-sans font-bold text-[#C00000]">
+                                    未承認{bucket.pendingCount}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
                           </div>
 
-                          <span className="px-2 py-0.5 rounded-full font-mono text-[10px] font-bold bg-[#E6E6FF] text-[#1F1F5C] border border-[#9999FF] shrink-0">
-                            {group.count}件
-                          </span>
-                        </div>
-
-                        <div className="mt-1 flex items-center justify-between text-[11px] font-mono">
-                          <span className="text-[10px] font-sans text-[#666699]">
-                            {group.pendingCount > 0
-                              ? `未承認 ${group.pendingCount}`
-                              : `承認済 ${group.approvedCount}`}
-                          </span>
-                          <span className="font-black text-xs text-[#1F1F5C] tabular-nums">
-                            {formatYen(group.totalAmount)}
-                          </span>
-                        </div>
-                      </button>
-                    );
-                  })}
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span
+                              className={`px-2 py-0.5 rounded-full font-mono text-[10px] font-bold border ${
+                                bucket.count > 0
+                                  ? 'bg-[#E6E6FF] text-[#1F1F5C] border-[#9999FF]'
+                                  : 'bg-[#F5F5FF] text-[#666699] border-[#D6D6FF]'
+                              }`}
+                            >
+                              {bucket.count}件
+                            </span>
+                            <span
+                              className={`font-mono font-black text-xs tabular-nums min-w-[82px] text-right ${
+                                bucket.totalAmount > 0 ? 'text-[#19194D]' : 'text-[#666699]'
+                              }`}
+                            >
+                              {formatYen(bucket.totalAmount)}
+                            </span>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
 
                 {/* サイドバーフッタ */}
                 <div className="p-2.5 border-t-2 border-[#7878FF] bg-gradient-to-r from-[#C2C2FF] via-[#D6D6FF] to-[#C2C2FF] text-xs font-mono flex items-center justify-between shrink-0 text-[#1F1F5C]">
                   <span className="text-[10px] font-sans font-bold">
-                    表示中 {displayedItems.length} 伝票
+                    {periodScopeLabel}（{displayedItems.length}件）
                   </span>
                   <div className="text-right">
-                    <span className="text-[10px] font-sans font-bold mr-1">頁計:</span>
+                    <span className="text-[10px] font-sans font-bold mr-1">年間計:</span>
                     <span className="font-black text-xs tabular-nums">
-                      {formatYen(pageItemsTotals.total)}
+                      {formatYen(annualSummary.totalAmount)}
                     </span>
                   </div>
                 </div>
@@ -1175,7 +1202,7 @@ export default function SalesListClient({
               {/* 2. 右メインパネル: 伝票一覧テーブル */}
               <div className="flex-1 min-w-0 min-h-0 bg-white rounded-xl border-2 border-[#9999FF] shadow-2xs overflow-hidden flex flex-col">
                 <div className="flex-1 min-h-0 overflow-auto">
-                  <table className="w-full h-full min-w-[980px] text-left border-collapse text-xs">
+                  <table className="w-full h-full min-w-[960px] text-left border-collapse text-xs">
                     <thead className="sticky top-0 z-20 shadow-[0_1px_0_0_rgba(120,120,255,0.4)]">
                       <tr className="h-9 bg-gradient-to-r from-[#CCCCFF] via-[#DDDDFF] to-[#CCCCFF] border-b-2 border-[#7878FF] text-[#1F1F5C] font-black text-xs select-none">
                         <th className="h-9 px-2.5 w-9 text-center">
@@ -1229,10 +1256,10 @@ export default function SalesListClient({
                             <div className="flex flex-col items-center justify-center gap-2.5">
                               <span className="text-3xl">🧾</span>
                               <p className="text-sm font-black text-[#1F1F5C]">
-                                条件に一致する伝票データがありません
+                                {periodScopeLabel} に一致する伝票データがありません
                               </p>
                               <p className="text-xs text-[#666699]">
-                                検索条件または左の売上日別フィルタを変更するか、新規伝票を発行してください。
+                                左の月別一覧・年切替または上のリアルタイム検索条件を変更してください。
                               </p>
                               <Link
                                 href={`/sales/new?entryType=${currentEntryType}`}
@@ -1296,7 +1323,7 @@ export default function SalesListClient({
                                             : 'bg-[#F5F5FF] text-[#4D4DB3] border-[#B3B3FF]'
                                     }`}
                                   >
-                                    {item.status}: {SALES_STATUS_LABELS[item.status]}
+                                    {SALES_STATUS_LABELS[item.status]}
                                   </span>
                                 </td>
                                 <td className="h-9 py-1 px-2.5 text-center whitespace-nowrap">
@@ -1395,16 +1422,15 @@ export default function SalesListClient({
                       )}
                     </tbody>
 
-                    {/* 下部固定 合計フッタ行（tfoot: #9999FF 淡濃ラベンダーブルー） */}
+                    {/* 下部固定 合計フッタ行 */}
                     <tfoot className="sticky bottom-0 z-20 shadow-[0_-1px_0_0_rgba(120,120,255,0.45)]">
                       <tr className="h-9 bg-gradient-to-r from-[#C2C2FF] via-[#D6D6FF] to-[#C2C2FF] font-black text-[#1F1F5C] border-t-2 border-[#7878FF] text-xs">
                         <td colSpan={2} className="h-9 py-1 px-3 text-center whitespace-nowrap font-mono">
                           表示 {displayedItems.length} 伝票
                         </td>
                         <td colSpan={5} className="h-9 py-1 px-3 text-left text-[11px] font-bold text-[#1F1F5C]">
-                          {selectedDateFilter !== null
-                            ? `選択日合計（${selectedDateDisplay}）`
-                            : '表示一覧合計（当頁）'}
+                          {periodScopeLabel} 合計
+                          {hasActiveFilters ? '（条件絞込適用中）' : ''}
                         </td>
                         <td className="h-9 py-1 px-3 text-right font-mono tabular-nums whitespace-nowrap">
                           {formatYen(displayedTotals.subtotal)}
@@ -1423,31 +1449,15 @@ export default function SalesListClient({
                   </table>
                 </div>
 
-                {/* 下部フッタバー（#9999FF 濃色 #2B2B80〜#333399 + ページネーション） */}
-                <div className="min-h-10 px-4 py-1.5 bg-gradient-to-r from-[#2B2B80] via-[#333399] to-[#2B2B80] border-t-2 border-[#7878FF] flex flex-wrap items-center justify-between gap-2 text-xs text-white shrink-0">
+                {/* 下部フッタバー */}
+                <div className="min-h-9 px-4 py-1.5 bg-gradient-to-r from-[#2B2B80] via-[#333399] to-[#2B2B80] border-t-2 border-[#7878FF] flex flex-wrap items-center justify-between gap-2 text-xs text-white shrink-0">
                   <span className="text-[11px] text-[#E6E6FF] truncate">
-                    ※ 左の売上日別一覧で日付を選択すると表示伝票を絞り込めます。行または伝票Noクリックで編集画面を開きます。
+                    ※ 左の売上月別一覧（通年 / 1〜12月）で表示期間を即時切替、上のバーでリアルタイム絞り込みができます。
                   </span>
                   <div className="flex items-center gap-2 font-mono shrink-0">
-                    <span className="text-[11px] text-[#E6E6FF]">
-                      全 {pageData.summary.totalCount} 件（ページ {pageData.page} / {totalPages}）
+                    <span className="px-2.5 py-0.5 rounded-full bg-[#7878FF]/45 border border-[#CCCCFF]/40 text-[11px] text-[#E6E6FF]">
+                      表示: {displayedItems.length} 件 / {selectedYear}年 全 {yearTotalCount} 件
                     </span>
-                    <button
-                      type="button"
-                      disabled={pageData.page <= 1 || loading}
-                      onClick={() => void loadSalesPage(currentEntryType, { page: pageData.page - 1 })}
-                      className="h-7 rounded-md border border-[#CCCCFF]/70 bg-[#7878FF] hover:bg-[#9999FF] px-3 text-xs font-bold text-white disabled:opacity-40 cursor-pointer transition"
-                    >
-                      ◀ 前へ
-                    </button>
-                    <button
-                      type="button"
-                      disabled={pageData.page >= totalPages || loading}
-                      onClick={() => void loadSalesPage(currentEntryType, { page: pageData.page + 1 })}
-                      className="h-7 rounded-md border border-[#CCCCFF]/70 bg-[#7878FF] hover:bg-[#9999FF] px-3 text-xs font-bold text-white disabled:opacity-40 cursor-pointer transition"
-                    >
-                      次へ ▶
-                    </button>
                   </div>
                 </div>
               </div>
@@ -1455,7 +1465,7 @@ export default function SalesListClient({
           </>
         ) : (
           /* ========================================================= */
-          /* 商品別売上・立替集計タブ（#9999FF 基準濃淡 × cabacc スタイル） */
+          /* 商品別売上・立替集計タブ（区分セグメントボタン＋リアルタイム検索） */
           /* ========================================================= */
           <div className="flex-1 min-h-[440px] flex flex-col space-y-3 lg:overflow-hidden">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 shrink-0">
@@ -1467,17 +1477,17 @@ export default function SalesListClient({
                   </span>
                 </div>
                 <div className="mt-1.5 text-2xl font-black font-mono tabular-nums text-white">
-                  {formatYen(summaryData.totals.inclAmount)}
+                  {formatYen(displayedSummaryTotals.inclAmount)}
                 </div>
                 <div className="mt-1 text-[11px] text-[#B3B3FF] font-mono">
-                  集計品目: {summaryData.totals.rowCount} 件
+                  集計品目: {displayedSummaryTotals.rowCount} 件
                 </div>
               </div>
 
               <div className="bg-white rounded-xl px-4 py-3 border-2 border-[#B3B3FF] text-[#1F1F5C] shadow-2xs flex flex-col justify-between">
                 <div className="text-xs font-bold text-[#4D4DB3]">📦 集計品目数</div>
                 <div className="mt-1.5 text-2xl font-black font-mono tabular-nums text-[#1F1F5C]">
-                  {summaryData.totals.rowCount}{' '}
+                  {displayedSummaryTotals.rowCount}{' '}
                   <span className="text-xs font-sans font-bold text-[#666699]">品目</span>
                 </div>
                 <div className="mt-1 text-[11px] text-[#666699] font-mono">商品別グルーピング</div>
@@ -1486,7 +1496,7 @@ export default function SalesListClient({
               <div className="bg-white rounded-xl px-4 py-3 border-2 border-[#B3B3FF] text-[#1F1F5C] shadow-2xs flex flex-col justify-between">
                 <div className="text-xs font-bold text-[#4D4DB3]">💴 税抜金額合計</div>
                 <div className="mt-1.5 text-2xl font-black font-mono tabular-nums text-[#1F1F5C]">
-                  {formatYen(summaryData.totals.exclAmount)}
+                  {formatYen(displayedSummaryTotals.exclAmount)}
                 </div>
                 <div className="mt-1 text-[11px] text-[#666699] font-mono">純売上合計</div>
               </div>
@@ -1494,39 +1504,104 @@ export default function SalesListClient({
               <div className="bg-white rounded-xl px-4 py-3 border-2 border-[#B3B3FF] text-[#1F1F5C] shadow-2xs flex flex-col justify-between">
                 <div className="text-xs font-bold text-[#4D4DB3]">🧾 消費税額合計</div>
                 <div className="mt-1.5 text-2xl font-black font-mono tabular-nums text-[#1F1F5C]">
-                  {formatYen(summaryData.totals.taxAmount)}
+                  {formatYen(displayedSummaryTotals.taxAmount)}
                 </div>
                 <div className="mt-1 text-[11px] text-[#666699] font-mono">内訳税額合算</div>
               </div>
             </div>
 
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                void loadProductSummary();
-              }}
-              className="relative bg-white pl-4 pr-3.5 py-2.5 rounded-xl border-2 border-[#9999FF] shadow-2xs flex flex-wrap items-center justify-between gap-2.5 shrink-0"
-            >
+            <div className="relative bg-white pl-4 pr-3.5 py-2 rounded-xl border-2 border-[#9999FF] shadow-2xs flex flex-wrap items-center justify-between gap-2.5 shrink-0 min-h-[50px]">
               <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-[#7878FF] rounded-l-xl" />
-              <div className="flex flex-wrap items-center gap-2">
-                <select
-                  aria-label="区分"
-                  value={sumEntryFilter}
-                  onChange={(e) => setSumEntryFilter(e.target.value as 'ALL' | SalesEntryType)}
-                  className="h-8 rounded-lg border border-[#9999FF] bg-white px-2.5 text-xs font-semibold text-[#1F1F5C]"
-                >
-                  {lookups.salesEnabled && lookups.tatekaeEnabled && (
-                    <option value="ALL">区分: すべて（売上＋立替）</option>
+              <div className="flex flex-wrap items-center gap-2.5">
+                {/* リアルタイム品名・コード検索 */}
+                <div className="relative w-52">
+                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-[#5252CC]">
+                    🔍
+                  </span>
+                  <input
+                    type="text"
+                    value={sumKeyword}
+                    onChange={(e) => setSumKeyword(e.target.value)}
+                    placeholder="品名・商品コードで即時検索..."
+                    className="w-full h-8 pl-7 pr-7 rounded-lg border border-[#9999FF] focus:border-[#5252CC] focus:ring-2 focus:ring-[#9999FF]/35 focus:outline-hidden text-xs font-semibold text-[#1F1F5C] placeholder:text-[#666699] placeholder:font-normal"
+                  />
+                  {sumKeyword !== '' && (
+                    <button
+                      type="button"
+                      onClick={() => setSumKeyword('')}
+                      title="入力をクリア"
+                      className="absolute right-1.5 top-1/2 -translate-y-1/2 h-5 w-5 rounded flex items-center justify-center text-[11px] text-[#666699] hover:text-[#1F1F5C] hover:bg-[#E6E6FF] cursor-pointer"
+                    >
+                      ✕
+                    </button>
                   )}
-                  {lookups.salesEnabled && <option value="SALE">区分: 売上のみ</option>}
-                  {lookups.tatekaeEnabled && <option value="ADVANCE">区分: 立替のみ</option>}
-                </select>
+                </div>
 
+                {/* 区分セグメントボタン */}
+                <div className="flex items-center gap-1">
+                  <span className="text-[11px] font-bold text-[#4D4DB3]">区分:</span>
+                  <div className="inline-flex items-center rounded-lg bg-[#F0F0FF] p-0.5 border border-[#B3B3FF]">
+                    {lookups.salesEnabled && lookups.tatekaeEnabled && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSumEntryFilter('ALL');
+                          void loadProductSummary({ entryTypeFilter: 'ALL' });
+                        }}
+                        className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition cursor-pointer ${
+                          sumEntryFilter === 'ALL'
+                            ? 'bg-gradient-to-b from-[#7878FF] to-[#5252CC] text-white shadow-2xs'
+                            : 'text-[#333399] hover:bg-[#D6D6FF]/70'
+                        }`}
+                      >
+                        すべて
+                      </button>
+                    )}
+                    {lookups.salesEnabled && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSumEntryFilter('SALE');
+                          void loadProductSummary({ entryTypeFilter: 'SALE' });
+                        }}
+                        className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition cursor-pointer ${
+                          sumEntryFilter === 'SALE'
+                            ? 'bg-gradient-to-b from-[#7878FF] to-[#5252CC] text-white shadow-2xs'
+                            : 'text-[#333399] hover:bg-[#D6D6FF]/70'
+                        }`}
+                      >
+                        売上のみ
+                      </button>
+                    )}
+                    {lookups.tatekaeEnabled && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSumEntryFilter('ADVANCE');
+                          void loadProductSummary({ entryTypeFilter: 'ADVANCE' });
+                        }}
+                        className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition cursor-pointer ${
+                          sumEntryFilter === 'ADVANCE'
+                            ? 'bg-gradient-to-b from-[#7878FF] to-[#5252CC] text-white shadow-2xs'
+                            : 'text-[#333399] hover:bg-[#D6D6FF]/70'
+                        }`}
+                      >
+                        立替のみ
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* 取引先・期間 */}
                 <select
                   aria-label="取引先"
                   value={sumPartnerId}
-                  onChange={(e) => setSumPartnerId(e.target.value)}
-                  className="h-8 rounded-lg border border-[#9999FF] bg-white px-2.5 text-xs font-semibold text-[#1F1F5C] max-w-[220px]"
+                  onChange={(e) => {
+                    const nextPartner = e.target.value;
+                    setSumPartnerId(nextPartner);
+                    void loadProductSummary({ partnerId: nextPartner });
+                  }}
+                  className="h-8 rounded-lg border border-[#9999FF] bg-white px-2.5 text-xs font-semibold text-[#1F1F5C] max-w-[200px]"
                 >
                   <option value="">すべての取引先</option>
                   {lookups.partners.map((p) => (
@@ -1541,7 +1616,11 @@ export default function SalesListClient({
                     aria-label="集計期間From"
                     type="date"
                     value={sumDateFrom}
-                    onChange={(e) => setSumDateFrom(e.target.value)}
+                    onChange={(e) => {
+                      const nextFrom = e.target.value;
+                      setSumDateFrom(nextFrom);
+                      void loadProductSummary({ dateFrom: nextFrom });
+                    }}
                     className="h-8 rounded-lg border border-[#9999FF] px-2 text-xs font-mono text-[#1F1F5C] bg-white"
                   />
                   <span className="text-xs text-[#666699]">〜</span>
@@ -1549,39 +1628,37 @@ export default function SalesListClient({
                     aria-label="集計期間To"
                     type="date"
                     value={sumDateTo}
-                    onChange={(e) => setSumDateTo(e.target.value)}
+                    onChange={(e) => {
+                      const nextTo = e.target.value;
+                      setSumDateTo(nextTo);
+                      void loadProductSummary({ dateTo: nextTo });
+                    }}
                     className="h-8 rounded-lg border border-[#9999FF] px-2 text-xs font-mono text-[#1F1F5C] bg-white"
                   />
                 </div>
-
-                <input
-                  type="text"
-                  value={sumKeyword}
-                  onChange={(e) => setSumKeyword(e.target.value)}
-                  placeholder="品名・商品コード検索..."
-                  className="h-8 w-52 rounded-lg border border-[#9999FF] px-3 text-xs font-semibold text-[#1F1F5C] placeholder:text-[#666699]"
-                />
-
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="h-8 px-4 rounded-lg bg-gradient-to-b from-[#5C5CD6] to-[#333399] hover:from-[#7878FF] hover:to-[#4747B3] text-white border border-[#242466] text-xs font-bold shadow-xs cursor-pointer"
-                >
-                  {loading ? '集計中...' : '集計実行'}
-                </button>
-                <button
-                  type="button"
-                  onClick={handleResetSummaryFilters}
-                  disabled={loading}
-                  className="h-8 px-3.5 rounded-lg bg-gradient-to-b from-white via-[#F0F0FF] to-[#CCCCFF] hover:to-[#B3B3FF] text-[#333399] border border-[#9999FF] text-xs font-bold shadow-2xs cursor-pointer"
-                >
-                  クリア
-                </button>
               </div>
-              <span className="px-2.5 py-1 rounded-full text-[11px] font-mono font-black bg-[#CCCCFF] text-[#1F1F5C] border border-[#7878FF]">
-                計 {summaryData.totals.rowCount} 品目
-              </span>
-            </form>
+
+              <div className="flex items-center gap-2">
+                {loading && (
+                  <span className="inline-flex items-center gap-1 text-[11px] font-bold bg-[#CCCCFF] text-[#1F1F5C] border border-[#7878FF] px-2.5 py-0.5 rounded-full animate-pulse">
+                    集計中...
+                  </span>
+                )}
+                {hasActiveSummaryFilters && (
+                  <button
+                    type="button"
+                    onClick={handleResetSummaryFilters}
+                    disabled={loading}
+                    className="h-7 px-2.5 rounded-md border border-[#9999FF] bg-white hover:bg-[#E6E6FF] text-[11px] font-bold text-[#333399] cursor-pointer"
+                  >
+                    条件解除
+                  </button>
+                )}
+                <span className="px-2.5 py-1 rounded-full text-[11px] font-mono font-black bg-[#CCCCFF] text-[#1F1F5C] border border-[#7878FF]">
+                  計 {displayedSummaryTotals.rowCount} 品目
+                </span>
+              </div>
+            </div>
 
             <div className="flex-1 min-h-0 bg-white rounded-xl border-2 border-[#9999FF] shadow-2xs overflow-hidden flex flex-col">
               <div className="flex-1 min-h-0 overflow-auto">
@@ -1601,15 +1678,15 @@ export default function SalesListClient({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#D6D6FF]">
-                    {summaryData.items.length === 0 ? (
+                    {displayedSummaryItems.length === 0 ? (
                       <tr>
                         <td colSpan={10} className="px-4 py-14 text-center text-sm text-[#666699] bg-white">
-                          該当する集計データがありません。条件を指定して「集計実行」を押してください。
+                          該当する集計データがありません。
                         </td>
                       </tr>
                     ) : (
                       <>
-                        {summaryData.items.map((row, idx) => (
+                        {displayedSummaryItems.map((row, idx) => (
                           <tr
                             key={`${row.entryType}-${row.itemName}-${row.taxCode}-${idx}`}
                             className={`h-9 ${idx % 2 === 0 ? 'bg-white' : 'bg-[#F5F5FF]'} hover:bg-[#D6D6FF]/65 transition-colors`}
@@ -1663,16 +1740,16 @@ export default function SalesListClient({
                   <tfoot className="sticky bottom-0 z-20">
                     <tr className="h-9 bg-gradient-to-r from-[#C2C2FF] via-[#D6D6FF] to-[#C2C2FF] font-black text-[#1F1F5C] border-t-2 border-[#7878FF] text-xs">
                       <td colSpan={7} className="h-9 px-3 text-left font-bold">
-                        商品別集計合計（全 {summaryData.totals.rowCount} 品目）
+                        商品別集計合計（全 {displayedSummaryTotals.rowCount} 品目）
                       </td>
                       <td className="h-9 px-3 text-right font-mono tabular-nums">
-                        {formatYen(summaryData.totals.exclAmount)}
+                        {formatYen(displayedSummaryTotals.exclAmount)}
                       </td>
                       <td className="h-9 px-3 text-right font-mono tabular-nums text-[#333399]">
-                        {formatYen(summaryData.totals.taxAmount)}
+                        {formatYen(displayedSummaryTotals.taxAmount)}
                       </td>
                       <td className="h-9 px-3 text-right font-mono tabular-nums font-black text-[#19194D]">
-                        {formatYen(summaryData.totals.inclAmount)}
+                        {formatYen(displayedSummaryTotals.inclAmount)}
                       </td>
                     </tr>
                   </tfoot>
@@ -1680,10 +1757,10 @@ export default function SalesListClient({
               </div>
               <div className="h-9 px-4 bg-gradient-to-r from-[#2B2B80] via-[#333399] to-[#2B2B80] border-t-2 border-[#7878FF] flex items-center justify-between text-xs text-white shrink-0">
                 <span className="text-[11px] text-[#E6E6FF]">
-                  ※ 条件を指定して「集計実行」を押すと、売上・立替伝票の商品別集計が表示されます。
+                  ※ 区分ボタン・取引先・期間で自動集計し、品名・商品コードで即時絞り込みができます。
                 </span>
                 <span className="font-mono text-[11px] text-[#E6E6FF]">
-                  表示中: {summaryData.totals.rowCount} 品目
+                  表示中: {displayedSummaryTotals.rowCount} 品目
                 </span>
               </div>
             </div>

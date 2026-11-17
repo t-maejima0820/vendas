@@ -32,16 +32,22 @@ export default async function SalesPage({
 
     const initialSalesPage =
       initialTab === 'SALE' && lookups.salesEnabled
-        ? await listSalesSlips(tx, user.tenantId, { entryType: 'SALE', page: 1, pageSize: 25 })
+        ? await listSalesSlips(tx, user.tenantId, { entryType: 'SALE', page: 1, pageSize: 2000 })
         : null;
     const initialAdvancePage =
       initialTab === 'ADVANCE' && lookups.tatekaeEnabled
-        ? await listSalesSlips(tx, user.tenantId, { entryType: 'ADVANCE', page: 1, pageSize: 25 })
+        ? await listSalesSlips(tx, user.tenantId, { entryType: 'ADVANCE', page: 1, pageSize: 2000 })
         : null;
     const initialProductSummary =
       initialTab === 'SUMMARY'
         ? await getSalesProductSummary(tx, user.tenantId, { entryTypeFilter: 'ALL' })
         : null;
+
+    const currentJstYear = Number(
+      new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tokyo', year: 'numeric' }).format(
+        new Date(),
+      ),
+    );
 
     return {
       allowed: true as const,
@@ -50,6 +56,7 @@ export default async function SalesPage({
       initialSalesPage,
       initialAdvancePage,
       initialProductSummary,
+      currentJstYear,
     };
   });
 
@@ -69,6 +76,7 @@ export default async function SalesPage({
       initialSalesPage={data.initialSalesPage}
       initialAdvancePage={data.initialAdvancePage}
       initialProductSummary={data.initialProductSummary}
+      currentJstYear={data.currentJstYear}
     />
   );
 }

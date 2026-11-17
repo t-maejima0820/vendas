@@ -15,7 +15,7 @@ import {
   type TaxCalcPolicy,
   type TaxCode,
 } from '@/lib/domain/calculations';
-import { getEstimateEditorLookups } from '@/lib/estimates/estimates-service';
+import { getConsolidatedBaseLookups } from '@/lib/estimates/estimates-service';
 import type { QuotationTemplateVariant } from '@/lib/estimates/types';
 import { requireFeature } from '@/lib/feature-flags/gate';
 import { mapPgConstraintError, MasterDataError } from '@/lib/masters/error-mapper';
@@ -225,25 +225,14 @@ export async function getSubscriptionLookups(
   tenantId: string,
 ): Promise<SubscriptionLookupsDto> {
   await requireFeature(tx, tenantId, 'fixedbill');
-  const [base, tsRows] = await Promise.all([
-    getEstimateEditorLookups(tx, tenantId),
-    tx.query<{
-      approval_flow_enabled: boolean;
-      opening_balance_date: string;
-    }>(
-      `SELECT approval_flow_enabled,
-              opening_balance_date::text AS opening_balance_date
-         FROM tenant_settings
-        WHERE tenant_id = $1::uuid
-        LIMIT 1`,
-      [tenantId],
-    ),
-  ]);
-  const settings = tsRows[0];
+  const base = await getConsolidatedBaseLookups(tx, tenantId, {
+    includeCatalog: true,
+    includeClosingDays: false,
+    includePaymentMethods: false,
+  });
   return {
-    approvalFlowEnabled: settings !== undefined ? settings.approval_flow_enabled : true,
-    openingBalanceDate:
-      settings !== undefined ? settings.opening_balance_date.slice(0, 10) : '2026-01-01',
+    approvalFlowEnabled: base.approvalFlowEnabled,
+    openingBalanceDate: base.openingBalanceDate,
     defaultRoundingMode: base.defaultRoundingMode,
     taxCalcPolicy: base.taxCalcPolicy,
     quotationTemplateRows: base.quotationTemplateRows === 20 ? '20_ROWS' : '10_ROWS',

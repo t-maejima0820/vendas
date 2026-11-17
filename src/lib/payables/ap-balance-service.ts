@@ -42,9 +42,20 @@ function assertValidDate(raw: string, label: string): string {
   return trimmed;
 }
 
+function parseJsonRows<T>(raw: T[] | string): T[] {
+  if (Array.isArray(raw)) {
+    return raw;
+  }
+  const parsed = JSON.parse(raw) as unknown;
+  if (!Array.isArray(parsed)) {
+    throw new Error('買掛残高JSONデータの形式が不正です。');
+  }
+  return parsed as T[];
+}
+
 /**
  * 買掛繰越・残高計算共通サービス（旧Accessバグ②是正：opening_ap_balance 基準＆複数支払全額控除）
- * - tenant_settings.opening_balance_date (D0) を起点に [D1, D2] の買掛残高推移を1円単位で算出する
+ * - tenant_settings.opening_balance_date (D0) を起点に [D1, D2] の買掛残高推移を1円単位で算出する（単一CTEクエリ）
  */
 export async function calculatePartnersApBalances(
   tx: DbExecutor,
@@ -77,48 +88,89 @@ export async function calculatePartnersApBalances(
     );
   }
 
-  const tsRows = await tx.query<{ opening_balance_date: string }>(
-    `SELECT opening_balance_date::text AS opening_balance_date
-       FROM tenant_settings
-      WHERE tenant_id = $1::uuid
-      LIMIT 1`,
-    [params.tenantId],
-  );
-  const tsRow = tsRows[0];
-  if (tsRow === undefined) {
-    throw new MasterDataError(404, 'TENANT_SETTINGS_NOT_FOUND', '自社設定が見つかりません。');
-  }
-  const openingBalanceDate = tsRow.opening_balance_date.slice(0, 10);
-
-  const partnerRows = await tx.query<{ id: string; opening_ap_balance: string }>(
-    `SELECT id, opening_ap_balance::text AS opening_ap_balance
-       FROM business_partners
-      WHERE id = ANY($1::uuid[])`,
-    [uniqueIds],
-  );
-  const openingMap = new Map(partnerRows.map((p) => [p.id, BigInt(p.opening_ap_balance)]));
-
-  const payableAggRows = await tx.query<{
+  type PartnerOpeningRow = { id: string; opening_ap_balance: string };
+  type PayableAggRow = {
     supplier_id: string;
     before_payables: string;
     in_period_payables_incl: string;
     in_period_payables_tax: string;
+  };
+  type PaymentAggRow = {
+    supplier_id: string;
+    before_payments: string;
+    in_period_payments: string;
+  };
+
+  const aggRows = await tx.query<{
+    opening_balance_date: string | null;
+    partners_json: PartnerOpeningRow[] | string;
+    payables_json: PayableAggRow[] | string;
+    payments_json: PaymentAggRow[] | string;
   }>(
-    `SELECT supplier_id,
-            COALESCE(SUM(payable_amount) FILTER (
-              WHERE purchase_date > $2::date AND purchase_date < $3::date
-            ), 0)::text AS before_payables,
-            COALESCE(SUM(payable_amount) FILTER (
-              WHERE purchase_date > $2::date AND purchase_date >= $3::date AND purchase_date <= $4::date
-            ), 0)::text AS in_period_payables_incl,
-            COALESCE(SUM(tax_total) FILTER (
-              WHERE purchase_date > $2::date AND purchase_date >= $3::date AND purchase_date <= $4::date
-            ), 0)::text AS in_period_payables_tax
-       FROM payable_ledgers
-      WHERE supplier_id = ANY($1::uuid[])
-      GROUP BY supplier_id`,
-    [uniqueIds, openingBalanceDate, periodStart, periodEnd],
+    `WITH ts AS (
+       SELECT opening_balance_date::text AS opening_balance_date
+         FROM tenant_settings
+        WHERE tenant_id = $1::uuid
+        LIMIT 1
+     ),
+     bp AS (
+       SELECT id, opening_ap_balance::text AS opening_ap_balance
+         FROM business_partners
+        WHERE id = ANY($2::uuid[])
+     ),
+     payables AS (
+       SELECT pl.supplier_id,
+              COALESCE(SUM(pl.payable_amount) FILTER (
+                WHERE pl.purchase_date > ts.opening_balance_date::date AND pl.purchase_date < $3::date
+              ), 0)::text AS before_payables,
+              COALESCE(SUM(pl.payable_amount) FILTER (
+                WHERE pl.purchase_date > ts.opening_balance_date::date AND pl.purchase_date >= $3::date AND pl.purchase_date <= $4::date
+              ), 0)::text AS in_period_payables_incl,
+              COALESCE(SUM(pl.tax_total) FILTER (
+                WHERE pl.purchase_date > ts.opening_balance_date::date AND pl.purchase_date >= $3::date AND pl.purchase_date <= $4::date
+              ), 0)::text AS in_period_payables_tax
+         FROM payable_ledgers pl
+        CROSS JOIN ts
+        WHERE pl.supplier_id = ANY($2::uuid[])
+        GROUP BY pl.supplier_id
+     ),
+     payments AS (
+       SELECT sp.supplier_id,
+              COALESCE(SUM(
+                sp.amount_1 + sp.amount_2 + sp.amount_3 +
+                sp.deduction_amt_1 + sp.deduction_amt_2 + sp.deduction_amt_3
+              ) FILTER (
+                WHERE sp.payment_date > ts.opening_balance_date::date AND sp.payment_date < $3::date
+              ), 0)::text AS before_payments,
+              COALESCE(SUM(
+                sp.amount_1 + sp.amount_2 + sp.amount_3 +
+                sp.deduction_amt_1 + sp.deduction_amt_2 + sp.deduction_amt_3
+              ) FILTER (
+                WHERE sp.payment_date > ts.opening_balance_date::date AND sp.payment_date >= $3::date AND sp.payment_date <= $4::date
+              ), 0)::text AS in_period_payments
+         FROM supplier_payments sp
+        CROSS JOIN ts
+        WHERE sp.supplier_id = ANY($2::uuid[])
+        GROUP BY sp.supplier_id
+     )
+     SELECT
+       (SELECT opening_balance_date FROM ts) AS opening_balance_date,
+       COALESCE((SELECT json_agg(row_to_json(bp)) FROM bp), '[]'::json) AS partners_json,
+       COALESCE((SELECT json_agg(row_to_json(payables)) FROM payables), '[]'::json) AS payables_json,
+       COALESCE((SELECT json_agg(row_to_json(payments)) FROM payments), '[]'::json) AS payments_json`,
+    [params.tenantId, uniqueIds, periodStart, periodEnd],
   );
+
+  const aggRow = aggRows[0];
+  if (aggRow === undefined || aggRow.opening_balance_date === null) {
+    throw new MasterDataError(404, 'TENANT_SETTINGS_NOT_FOUND', '自社設定が見つかりません。');
+  }
+  const openingBalanceDate = aggRow.opening_balance_date.slice(0, 10);
+
+  const partnerRows = parseJsonRows<PartnerOpeningRow>(aggRow.partners_json);
+  const openingMap = new Map(partnerRows.map((p) => [p.id, BigInt(p.opening_ap_balance)]));
+
+  const payableAggRows = parseJsonRows<PayableAggRow>(aggRow.payables_json);
   const payableAggMap = new Map(
     payableAggRows.map((r) => [
       r.supplier_id,
@@ -130,29 +182,7 @@ export async function calculatePartnersApBalances(
     ]),
   );
 
-  const paymentAggRows = await tx.query<{
-    supplier_id: string;
-    before_payments: string;
-    in_period_payments: string;
-  }>(
-    `SELECT supplier_id,
-            COALESCE(SUM(
-              amount_1 + amount_2 + amount_3 +
-              deduction_amt_1 + deduction_amt_2 + deduction_amt_3
-            ) FILTER (
-              WHERE payment_date > $2::date AND payment_date < $3::date
-            ), 0)::text AS before_payments,
-            COALESCE(SUM(
-              amount_1 + amount_2 + amount_3 +
-              deduction_amt_1 + deduction_amt_2 + deduction_amt_3
-            ) FILTER (
-              WHERE payment_date > $2::date AND payment_date >= $3::date AND payment_date <= $4::date
-            ), 0)::text AS in_period_payments
-       FROM supplier_payments
-      WHERE supplier_id = ANY($1::uuid[])
-      GROUP BY supplier_id`,
-    [uniqueIds, openingBalanceDate, periodStart, periodEnd],
-  );
+  const paymentAggRows = parseJsonRows<PaymentAggRow>(aggRow.payments_json);
   const paymentAggMap = new Map(
     paymentAggRows.map((r) => [
       r.supplier_id,

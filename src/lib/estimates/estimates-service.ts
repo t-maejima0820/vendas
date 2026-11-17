@@ -28,7 +28,7 @@ import {
   type QuotationPageDto,
   type QuotationStatus,
 } from '@/lib/estimates/types';
-import { isFeatureEnabled } from '@/lib/feature-flags/gate';
+import { isFeatureEnabled, primeFeatureCacheForTx } from '@/lib/feature-flags/gate';
 import { mapPgConstraintError, MasterDataError } from '@/lib/masters/error-mapper';
 import { listEntitySnapshots } from '@/lib/snapshots/snapshot-service';
 import { removeAttachmentObject } from '@/lib/storage/storage-client';
@@ -247,63 +247,68 @@ function validateQuotationInput(input: QuotationInput): CleanQuotationPayload {
   };
 }
 
-export async function getEstimateEditorLookups(
+function parseLookupsJson<T>(raw: T | string): T {
+  if (typeof raw === 'string') {
+    return JSON.parse(raw) as T;
+  }
+  return raw;
+}
+
+export interface ConsolidatedBaseLookupsResult extends EstimateEditorLookupsDto {
+  openingBalanceDate: string;
+  approvalFlowEnabled: boolean;
+  allowBillingDateWarningSkip: boolean;
+  showInvoiceCarryover: boolean;
+  defaultArListDateMode: number;
+  closingDays: Array<{ code: string; name: string }>;
+  paymentMethods: Array<{ methodCode: string; methodName: string }>;
+}
+
+/**
+ * 見積・売上・請求・売掛・定額サブスク各画面向けルックアップを単一SQLクエリで一括取得し、
+ * 同一トランザクション内の tenant_feature_authorities キャッシュも初期化する。
+ */
+export async function getConsolidatedBaseLookups(
   tx: DbExecutor,
   tenantId: string,
-): Promise<EstimateEditorLookupsDto> {
-  const settingsRows = await tx.query<{
+  options: {
+    includeCatalog?: boolean;
+    includeClosingDays?: boolean;
+    includePaymentMethods?: boolean;
+  } = {},
+): Promise<ConsolidatedBaseLookupsResult> {
+  const includeCatalog = options.includeCatalog !== false;
+  const includeClosingDays = options.includeClosingDays === true;
+  const includePaymentMethods = options.includePaymentMethods === true;
+
+  type SettingsJson = {
+    opening_balance_date: string;
     tax_calc_policy: TaxCalcPolicy;
     default_rounding_mode: RoundingMode;
     cost_tax_mode: CostTaxMode;
     quotation_template_rows: number;
-  }>(
-    `SELECT tax_calc_policy::text AS tax_calc_policy,
-            default_rounding_mode::text AS default_rounding_mode,
-            cost_tax_mode::text AS cost_tax_mode,
-            quotation_template_rows
-       FROM tenant_settings
-      WHERE tenant_id = $1::uuid
-      LIMIT 1`,
-    [tenantId],
-  );
-  const settings = settingsRows[0];
-  if (settings === undefined) {
-    throw new MasterDataError(404, 'TENANT_SETTINGS_NOT_FOUND', '自社設定が見つかりません。');
-  }
-
-  const estimateImageEnabled = await isFeatureEnabled(tx, tenantId, 'estimateimage');
-
-  const partnerRows = await tx.query<{
+    approval_flow_enabled: boolean;
+    allow_billing_date_warning_skip: boolean;
+    show_invoice_carryover: boolean;
+    default_ar_list_date_mode: number;
+  };
+  type FeatureJson = { feature_code: string; is_enabled: boolean };
+  type PartnerJson = {
     id: string;
     partner_code: string;
     partner_name: string;
     is_individual_honorific: boolean;
     representative_name: string | null;
     is_client: boolean;
-  }>(
-    `SELECT bp.id, bp.partner_code, bp.partner_name, bp.is_individual_honorific,
-            r.representative_name, bp.is_client
-       FROM business_partners bp
-       LEFT JOIN representatives r ON r.tenant_id = bp.tenant_id AND r.id = bp.representative_id
-      WHERE bp.is_deleted = false
-      ORDER BY bp.is_client DESC, bp.partner_code ASC`,
-    [],
-  );
-
-  const projectRows = await tx.query<{
+  };
+  type ProjectJson = {
     id: string;
     project_no: string;
     project_name: string;
     partner_id: string;
     status: string;
-  }>(
-    `SELECT id, project_no::text AS project_no, project_name, partner_id, status::text AS status
-       FROM projects
-      ORDER BY project_no DESC`,
-    [],
-  );
-
-  const productRows = await tx.query<{
+  };
+  type ProductJson = {
     id: string;
     product_code: string;
     product_name: string;
@@ -313,57 +318,209 @@ export async function getEstimateEditorLookups(
     standard_cost_price: string;
     default_tax_code: TaxCode;
     is_heading: boolean;
-  }>(
-    `SELECT p.id, p.product_code, p.product_name, p.product_name_sub, u.unit_name,
-            p.standard_unit_price::text AS standard_unit_price,
-            p.standard_cost_price::text AS standard_cost_price,
-            p.default_tax_code, p.is_heading
-       FROM products p
-       LEFT JOIN units u ON u.tenant_id = p.tenant_id AND u.id = p.unit_id
-      WHERE p.is_deleted = false
-      ORDER BY p.product_code ASC`,
-    [],
-  );
-
-  const intelRows = await tx.query<{
+  };
+  type IntelJson = {
     id: string;
     item_name: string;
     unit_name: string | null;
     unit_price: string;
     cost_price: string;
     tax_code: TaxCode;
-  }>(
-    `SELECT id, item_name, unit_name, unit_price::text AS unit_price,
-            cost_price::text AS cost_price, tax_code
-       FROM input_intelligences
-      ORDER BY item_name ASC`,
-    [],
-  );
-
-  const unitRows = await tx.query<{
-    id: string;
-    unit_code: string;
-    unit_name: string;
-  }>(
-    `SELECT id, unit_code, unit_name
-       FROM units
-      WHERE is_deleted = false
-      ORDER BY display_order ASC, unit_code ASC`,
-    [],
-  );
-
-  const taxRows = await tx.query<{
+  };
+  type UnitJson = { id: string; unit_code: string; unit_name: string };
+  type TaxJson = {
     tax_code: TaxCode;
     tax_name: string;
     tax_rate: string;
     mark_symbol: string;
     is_internal: boolean;
+  };
+  type ClosingJson = { code: string; name: string };
+  type MethodJson = { method_code: string; method_name: string };
+
+  const rows = await tx.query<{
+    ts_json: SettingsJson | string | null;
+    features_json: FeatureJson[] | string;
+    partners_json: PartnerJson[] | string;
+    projects_json: ProjectJson[] | string;
+    products_json: ProductJson[] | string;
+    intelligences_json: IntelJson[] | string;
+    units_json: UnitJson[] | string;
+    tax_codes_json: TaxJson[] | string;
+    closing_days_json: ClosingJson[] | string;
+    payment_methods_json: MethodJson[] | string;
   }>(
-    `SELECT tax_code, tax_name, tax_rate::text AS tax_rate, mark_symbol, is_internal
-       FROM tax_codes
-      ORDER BY tax_code ASC`,
-    [],
+    `SELECT
+       (
+         SELECT json_build_object(
+           'opening_balance_date', ts.opening_balance_date::text,
+           'tax_calc_policy', ts.tax_calc_policy::text,
+           'default_rounding_mode', ts.default_rounding_mode::text,
+           'cost_tax_mode', ts.cost_tax_mode::text,
+           'quotation_template_rows', ts.quotation_template_rows,
+           'approval_flow_enabled', ts.approval_flow_enabled,
+           'allow_billing_date_warning_skip', ts.allow_billing_date_warning_skip,
+           'show_invoice_carryover', ts.show_invoice_carryover,
+           'default_ar_list_date_mode', ts.default_ar_list_date_mode
+         )
+           FROM tenant_settings ts
+          WHERE ts.tenant_id = $1::uuid
+          LIMIT 1
+       ) AS ts_json,
+       COALESCE(
+         (
+           SELECT json_agg(
+             json_build_object('feature_code', tfa.feature_code, 'is_enabled', tfa.is_enabled)
+           )
+             FROM tenant_feature_authorities tfa
+            WHERE tfa.tenant_id = $1::uuid
+         ),
+         '[]'::json
+       ) AS features_json,
+       COALESCE(
+         (
+           SELECT json_agg(row_to_json(bp) ORDER BY bp.is_client DESC, bp.partner_code ASC)
+             FROM (
+               SELECT bp.id, bp.partner_code, bp.partner_name, bp.is_individual_honorific,
+                      r.representative_name, bp.is_client
+                 FROM business_partners bp
+                 LEFT JOIN representatives r ON r.tenant_id = bp.tenant_id AND r.id = bp.representative_id
+                WHERE bp.is_deleted = false
+             ) bp
+         ),
+         '[]'::json
+       ) AS partners_json,
+       COALESCE(
+         (
+           SELECT json_agg(
+             json_build_object(
+               'id', pj.id,
+               'project_no', pj.project_no,
+               'project_name', pj.project_name,
+               'partner_id', pj.partner_id,
+               'status', pj.status
+             )
+             ORDER BY pj.project_no_num DESC
+           )
+             FROM (
+               SELECT id, project_no::text AS project_no, project_no AS project_no_num,
+                      project_name, partner_id, status::text AS status
+                 FROM projects
+             ) pj
+         ),
+         '[]'::json
+       ) AS projects_json,
+       CASE
+         WHEN $2::boolean THEN COALESCE(
+           (
+             SELECT json_agg(row_to_json(pr) ORDER BY pr.product_code ASC)
+               FROM (
+                 SELECT p.id, p.product_code, p.product_name, p.product_name_sub, u.unit_name,
+                        p.standard_unit_price::text AS standard_unit_price,
+                        p.standard_cost_price::text AS standard_cost_price,
+                        p.default_tax_code, p.is_heading
+                   FROM products p
+                   LEFT JOIN units u ON u.tenant_id = p.tenant_id AND u.id = p.unit_id
+                  WHERE p.is_deleted = false
+               ) pr
+           ),
+           '[]'::json
+         )
+         ELSE '[]'::json
+       END AS products_json,
+       CASE
+         WHEN $2::boolean THEN COALESCE(
+           (
+             SELECT json_agg(row_to_json(ii) ORDER BY ii.item_name ASC)
+               FROM (
+                 SELECT id, item_name, unit_name, unit_price::text AS unit_price,
+                        cost_price::text AS cost_price, tax_code
+                   FROM input_intelligences
+               ) ii
+           ),
+           '[]'::json
+         )
+         ELSE '[]'::json
+       END AS intelligences_json,
+       CASE
+         WHEN $2::boolean THEN COALESCE(
+           (
+             SELECT json_agg(
+               json_build_object('id', u.id, 'unit_code', u.unit_code, 'unit_name', u.unit_name)
+               ORDER BY u.display_order ASC, u.unit_code ASC
+             )
+               FROM units u
+              WHERE u.is_deleted = false
+           ),
+           '[]'::json
+         )
+         ELSE '[]'::json
+       END AS units_json,
+       CASE
+         WHEN $2::boolean THEN COALESCE(
+           (
+             SELECT json_agg(row_to_json(tc) ORDER BY tc.tax_code ASC)
+               FROM (
+                 SELECT tax_code, tax_name, tax_rate::text AS tax_rate, mark_symbol, is_internal
+                   FROM tax_codes
+               ) tc
+           ),
+           '[]'::json
+         )
+         ELSE '[]'::json
+       END AS tax_codes_json,
+       CASE
+         WHEN $3::boolean THEN COALESCE(
+           (
+             SELECT json_agg(
+               json_build_object('code', cm.code, 'name', cm.name)
+               ORDER BY cm.display_order ASC, cm.code ASC
+             )
+               FROM code_masters cm
+              WHERE cm.domain_key = 'BILL_CLOSE' AND cm.is_active = true
+           ),
+           '[]'::json
+         )
+         ELSE '[]'::json
+       END AS closing_days_json,
+       CASE
+         WHEN $4::boolean THEN COALESCE(
+           (
+             SELECT json_agg(
+               json_build_object('method_code', pm.method_code, 'method_name', pm.method_name)
+               ORDER BY pm.method_code ASC
+             )
+               FROM payment_methods pm
+           ),
+           '[]'::json
+         )
+         ELSE '[]'::json
+       END AS payment_methods_json`,
+    [tenantId, includeCatalog, includeClosingDays, includePaymentMethods],
   );
+
+  const dbRow = rows[0];
+  if (dbRow === undefined || dbRow.ts_json === null) {
+    throw new MasterDataError(404, 'TENANT_SETTINGS_NOT_FOUND', '自社設定が見つかりません。');
+  }
+
+  const settings = parseLookupsJson<SettingsJson>(dbRow.ts_json);
+  const featRows = parseLookupsJson<FeatureJson[]>(dbRow.features_json);
+  const featCacheMap = new Map<string, boolean>();
+  for (const f of featRows) {
+    featCacheMap.set(f.feature_code, f.is_enabled === true);
+  }
+  primeFeatureCacheForTx(tx, tenantId, featCacheMap);
+  const estimateImageEnabled = await isFeatureEnabled(tx, tenantId, 'estimateimage');
+
+  const partnerRows = parseLookupsJson<PartnerJson[]>(dbRow.partners_json);
+  const projectRows = parseLookupsJson<ProjectJson[]>(dbRow.projects_json);
+  const productRows = parseLookupsJson<ProductJson[]>(dbRow.products_json);
+  const intelRows = parseLookupsJson<IntelJson[]>(dbRow.intelligences_json);
+  const unitRows = parseLookupsJson<UnitJson[]>(dbRow.units_json);
+  const taxRows = parseLookupsJson<TaxJson[]>(dbRow.tax_codes_json);
+  const closingDays = parseLookupsJson<ClosingJson[]>(dbRow.closing_days_json);
+  const paymentMethodRows = parseLookupsJson<MethodJson[]>(dbRow.payment_methods_json);
 
   const partners: EstimatePartnerOption[] = partnerRows.map((r) => ({
     id: r.id,
@@ -404,6 +561,11 @@ export async function getEstimateEditorLookups(
   }));
 
   return {
+    openingBalanceDate: settings.opening_balance_date.slice(0, 10),
+    approvalFlowEnabled: settings.approval_flow_enabled,
+    allowBillingDateWarningSkip: settings.allow_billing_date_warning_skip,
+    showInvoiceCarryover: settings.show_invoice_carryover,
+    defaultArListDateMode: Number(settings.default_ar_list_date_mode),
     taxCalcPolicy: settings.tax_calc_policy,
     defaultRoundingMode: settings.default_rounding_mode,
     costTaxMode: settings.cost_tax_mode,
@@ -425,6 +587,35 @@ export async function getEstimateEditorLookups(
       markSymbol: r.mark_symbol,
       isInternal: r.is_internal,
     })),
+    closingDays,
+    paymentMethods: paymentMethodRows.map((pm) => ({
+      methodCode: pm.method_code,
+      methodName: pm.method_name,
+    })),
+  };
+}
+
+export async function getEstimateEditorLookups(
+  tx: DbExecutor,
+  tenantId: string,
+): Promise<EstimateEditorLookupsDto> {
+  const base = await getConsolidatedBaseLookups(tx, tenantId, {
+    includeCatalog: true,
+    includeClosingDays: false,
+    includePaymentMethods: false,
+  });
+  return {
+    taxCalcPolicy: base.taxCalcPolicy,
+    defaultRoundingMode: base.defaultRoundingMode,
+    costTaxMode: base.costTaxMode,
+    quotationTemplateRows: base.quotationTemplateRows,
+    estimateImageEnabled: base.estimateImageEnabled,
+    partners: base.partners,
+    projects: base.projects,
+    products: base.products,
+    intelligences: base.intelligences,
+    units: base.units,
+    taxCodes: base.taxCodes,
   };
 }
 

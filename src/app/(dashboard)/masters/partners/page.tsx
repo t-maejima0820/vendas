@@ -7,7 +7,7 @@ export default async function PartnersPage() {
   const { items, lookups, isAdmin } = await runWithPageSession(async ({ user, tx }) => {
     const [items, lookups] = await Promise.all([
       listBusinessPartners(tx),
-      getMasterLookups(tx),
+      getMasterLookups(tx, { includeBankBranches: true }),
     ]);
     return { items, lookups, isAdmin: user.isAdmin };
   });

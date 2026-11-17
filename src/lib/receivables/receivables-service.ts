@@ -2,7 +2,7 @@ import { calculatePartnersArBalances } from '@/lib/billing/ar-balance-service';
 import { RECEIVABLE_STATUS_LABELS, type ReceivableStatus } from '@/lib/billing/types';
 import type { DbExecutor } from '@/lib/db/tenant-client';
 import { renderReceivableListPdf } from '@/lib/domain/pdf-renderer';
-import { getEstimateEditorLookups } from '@/lib/estimates/estimates-service';
+import { getConsolidatedBaseLookups } from '@/lib/estimates/estimates-service';
 import type { SnapshotHistoryItemDto } from '@/lib/estimates/types';
 import { isFeatureEnabled, requireFeature } from '@/lib/feature-flags/gate';
 import { mapPgConstraintError, MasterDataError } from '@/lib/masters/error-mapper';
@@ -113,51 +113,27 @@ export async function getReceivablesLookups(
   tx: DbExecutor,
   tenantId: string,
 ): Promise<ReceivablesLookupsDto> {
-  const [base, tsRows, methodRows, closingRows, receivableEnabled, depositEnabled, aplusEnabled] =
-    await Promise.all([
-      getEstimateEditorLookups(tx, tenantId),
-      tx.query<{ opening_balance_date: string; default_ar_list_date_mode: number }>(
-        `SELECT opening_balance_date::text AS opening_balance_date,
-                default_ar_list_date_mode
-           FROM tenant_settings
-          WHERE tenant_id = $1::uuid
-          LIMIT 1`,
-        [tenantId],
-      ),
-      tx.query<{ method_code: string; method_name: string }>(
-        'SELECT method_code, method_name FROM payment_methods ORDER BY method_code ASC',
-        [],
-      ),
-      tx.query<{ code: string; name: string }>(
-        `SELECT code, name
-           FROM code_masters
-          WHERE domain_key = 'BILL_CLOSE' AND is_active = true
-          ORDER BY display_order ASC, code ASC`,
-        [],
-      ),
-      isFeatureEnabled(tx, tenantId, 'receivable'),
-      isFeatureEnabled(tx, tenantId, 'deposit'),
-      isFeatureEnabled(tx, tenantId, 'aplus'),
-    ]);
-
-  const settings = tsRows[0];
-  if (settings === undefined) {
-    throw new MasterDataError(404, 'TENANT_SETTINGS_NOT_FOUND', '自社設定が見つかりません。');
-  }
+  const base = await getConsolidatedBaseLookups(tx, tenantId, {
+    includeCatalog: false,
+    includeClosingDays: true,
+    includePaymentMethods: true,
+  });
+  const [receivableEnabled, depositEnabled, aplusEnabled] = await Promise.all([
+    isFeatureEnabled(tx, tenantId, 'receivable'),
+    isFeatureEnabled(tx, tenantId, 'deposit'),
+    isFeatureEnabled(tx, tenantId, 'aplus'),
+  ]);
 
   return {
-    openingBalanceDate: settings.opening_balance_date.slice(0, 10),
-    defaultArListDateMode: Number(settings.default_ar_list_date_mode),
+    openingBalanceDate: base.openingBalanceDate,
+    defaultArListDateMode: base.defaultArListDateMode,
     receivableEnabled,
     depositEnabled,
     aplusEnabled,
     partners: base.partners,
     projects: base.projects,
-    paymentMethods: methodRows.map((m) => ({
-      methodCode: m.method_code,
-      methodName: m.method_name,
-    })),
-    closingDays: closingRows,
+    paymentMethods: base.paymentMethods,
+    closingDays: base.closingDays,
   };
 }
 

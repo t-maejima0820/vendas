@@ -1,6 +1,7 @@
 import { decryptField, encryptField } from '@/lib/crypto/field-cipher';
 import type { DbExecutor } from '@/lib/db/tenant-client';
 import type { CostTaxMode, RoundingMode, TaxCalcPolicy } from '@/lib/domain/calculations';
+import { clearFeatureCacheForTx } from '@/lib/feature-flags/gate';
 
 export class SettingsValidationError extends Error {
   readonly statusCode: number;
@@ -142,19 +143,47 @@ export async function getTenantSettingsForAdmin(
     tax_calc_policy: TaxCalcPolicy;
     default_rounding_mode: RoundingMode;
     opening_balance_date: string | Date;
+    features_json:
+      | Array<{
+          feature_code: string;
+          feature_name: string;
+          is_enabled: boolean;
+          display_order: number;
+          is_fixed: boolean;
+        }>
+      | string;
   }>(
-    `SELECT company_code, company_name, invoice_registration_no, corporate_no,
-            postal_code, address1, address2, tel, fax, email,
-            representative_title, representative_name, fiscal_closing_month, billing_memo,
-            bank_code_1, branch_code_1, bank_account_type_1, bank_account_no_1_enc, bank_account_holder_1,
-            bank_code_2, branch_code_2, bank_account_type_2, bank_account_no_2_enc, bank_account_holder_2,
-            approval_flow_enabled, allow_billing_date_warning_skip,
-            default_approval_billing_date, default_ar_list_date_mode,
-            quotation_template_rows, show_invoice_carryover,
-            cost_tax_mode::text, tax_calc_policy::text, default_rounding_mode::text,
-            opening_balance_date::text
-       FROM tenant_settings
-      WHERE tenant_id = $1
+    `SELECT ts.company_code, ts.company_name, ts.invoice_registration_no, ts.corporate_no,
+            ts.postal_code, ts.address1, ts.address2, ts.tel, ts.fax, ts.email,
+            ts.representative_title, ts.representative_name, ts.fiscal_closing_month, ts.billing_memo,
+            ts.bank_code_1, ts.branch_code_1, ts.bank_account_type_1, ts.bank_account_no_1_enc, ts.bank_account_holder_1,
+            ts.bank_code_2, ts.branch_code_2, ts.bank_account_type_2, ts.bank_account_no_2_enc, ts.bank_account_holder_2,
+            ts.approval_flow_enabled, ts.allow_billing_date_warning_skip,
+            ts.default_approval_billing_date, ts.default_ar_list_date_mode,
+            ts.quotation_template_rows, ts.show_invoice_carryover,
+            ts.cost_tax_mode::text AS cost_tax_mode,
+            ts.tax_calc_policy::text AS tax_calc_policy,
+            ts.default_rounding_mode::text AS default_rounding_mode,
+            ts.opening_balance_date::text AS opening_balance_date,
+            COALESCE(
+              (
+                SELECT json_agg(
+                  json_build_object(
+                    'feature_code', tfa.feature_code,
+                    'feature_name', tfa.feature_name,
+                    'is_enabled', tfa.is_enabled,
+                    'display_order', tfa.display_order,
+                    'is_fixed', tfa.is_fixed
+                  )
+                  ORDER BY tfa.display_order ASC, tfa.feature_code ASC
+                )
+                  FROM tenant_feature_authorities tfa
+                 WHERE tfa.tenant_id = ts.tenant_id
+              ),
+              '[]'::json
+            ) AS features_json
+       FROM tenant_settings ts
+      WHERE ts.tenant_id = $1
       LIMIT 1`,
     [tenantId],
   );
@@ -164,19 +193,15 @@ export async function getTenantSettingsForAdmin(
     throw new SettingsValidationError('テナント設定が見つかりません', 404);
   }
 
-  const featureRows = await tx.query<{
-    feature_code: string;
-    feature_name: string;
-    is_enabled: boolean;
-    display_order: number;
-    is_fixed: boolean;
-  }>(
-    `SELECT feature_code, feature_name, is_enabled, display_order, is_fixed
-       FROM tenant_feature_authorities
-      WHERE tenant_id = $1
-      ORDER BY display_order ASC, feature_code ASC`,
-    [tenantId],
-  );
+  const featureRows = Array.isArray(row.features_json)
+    ? row.features_json
+    : (JSON.parse(row.features_json) as Array<{
+        feature_code: string;
+        feature_name: string;
+        is_enabled: boolean;
+        display_order: number;
+        is_fixed: boolean;
+      }>);
 
   const decBank1 =
     row.bank_account_no_1_enc === null ? null : decryptField(row.bank_account_no_1_enc, encryptionKeyHex);
@@ -421,6 +446,7 @@ export async function updateTenantSettingsForAdmin(
           AND tfa.feature_code = u.feature_code`,
       [tenantId, featureCodes, featureEnabledFlags],
     );
+    clearFeatureCacheForTx(tx);
   }
 
   return getTenantSettingsForAdmin(tx, tenantId, encryptionKeyHex);

@@ -10,7 +10,7 @@ import {
   renderSalesListPdf,
   renderSalesProductSummaryPdf,
 } from '@/lib/domain/pdf-renderer';
-import { getEstimateEditorLookups } from '@/lib/estimates/estimates-service';
+import { getConsolidatedBaseLookups } from '@/lib/estimates/estimates-service';
 import { FeatureDisabledError, isFeatureEnabled, requireFeature } from '@/lib/feature-flags/gate';
 import { mapPgConstraintError, MasterDataError } from '@/lib/masters/error-mapper';
 import {
@@ -276,24 +276,20 @@ export async function getSalesEditorLookups(
   tx: DbExecutor,
   tenantId: string,
 ): Promise<SalesEditorLookupsDto> {
-  const [baseLookups, settingsRows, salesEnabled, tatekaeEnabled, customSumItemEnabled, estimateEnabled] =
-    await Promise.all([
-      getEstimateEditorLookups(tx, tenantId),
-      tx.query<{ approval_flow_enabled: boolean }>(
-        'SELECT approval_flow_enabled FROM tenant_settings WHERE tenant_id = $1::uuid LIMIT 1',
-        [tenantId],
-      ),
-      isFeatureEnabled(tx, tenantId, 'sales'),
-      isFeatureEnabled(tx, tenantId, 'tatekae'),
-      isFeatureEnabled(tx, tenantId, 'custom-sum-item'),
-      isFeatureEnabled(tx, tenantId, 'estimate'),
-    ]);
-
-  const approvalFlowEnabled =
-    settingsRows[0] !== undefined ? settingsRows[0].approval_flow_enabled : true;
+  const baseLookups = await getConsolidatedBaseLookups(tx, tenantId, {
+    includeCatalog: true,
+    includeClosingDays: false,
+    includePaymentMethods: false,
+  });
+  const [salesEnabled, tatekaeEnabled, customSumItemEnabled, estimateEnabled] = await Promise.all([
+    isFeatureEnabled(tx, tenantId, 'sales'),
+    isFeatureEnabled(tx, tenantId, 'tatekae'),
+    isFeatureEnabled(tx, tenantId, 'custom-sum-item'),
+    isFeatureEnabled(tx, tenantId, 'estimate'),
+  ]);
 
   return {
-    approvalFlowEnabled,
+    approvalFlowEnabled: baseLookups.approvalFlowEnabled,
     taxCalcPolicy: baseLookups.taxCalcPolicy,
     defaultRoundingMode: baseLookups.defaultRoundingMode,
     quotationTemplateRows: baseLookups.quotationTemplateRows,

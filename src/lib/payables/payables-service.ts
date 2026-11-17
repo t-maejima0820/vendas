@@ -99,6 +99,13 @@ function escapeCsvCell(value: string): string {
   return `"${escaped}"`;
 }
 
+function parsePayablesJson<T>(raw: T | string): T {
+  if (typeof raw === 'string') {
+    return JSON.parse(raw) as T;
+  }
+  return raw;
+}
+
 export async function getPayablesLookups(
   tx: DbExecutor,
   tenantId: string,
@@ -113,61 +120,110 @@ export async function getPayablesLookups(
     await requireFeature(tx, tenantId, 'payable');
   }
 
-  const [tsRows, partnerRows, projectRows, methodRows, closingRows] = await Promise.all([
-    tx.query<{ opening_balance_date: string; default_ar_list_date_mode: number }>(
-      `SELECT opening_balance_date::text AS opening_balance_date,
-              default_ar_list_date_mode
-         FROM tenant_settings
-        WHERE tenant_id = $1::uuid
-        LIMIT 1`,
-      [tenantId],
-    ),
-    tx.query<{
-      id: string;
-      partner_code: string;
-      partner_name: string;
-      is_individual_honorific: boolean;
-      representative_name: string | null;
-      is_client: boolean;
-      is_supplier: boolean;
-    }>(
-      `SELECT bp.id, bp.partner_code, bp.partner_name, bp.is_individual_honorific,
-              r.representative_name, bp.is_client, bp.is_supplier
-         FROM business_partners bp
-         LEFT JOIN representatives r ON r.tenant_id = bp.tenant_id AND r.id = bp.representative_id
-        WHERE bp.is_deleted = false
-        ORDER BY bp.is_supplier DESC, bp.partner_code ASC`,
-      [],
-    ),
-    tx.query<{
-      id: string;
-      project_no: string;
-      project_name: string;
-      partner_id: string;
-      status: string;
-    }>(
-      `SELECT id, project_no::text AS project_no, project_name, partner_id, status::text AS status
-         FROM projects
-        ORDER BY project_no DESC`,
-      [],
-    ),
-    tx.query<{ method_code: string; method_name: string }>(
-      'SELECT method_code, method_name FROM payment_methods ORDER BY method_code ASC',
-      [],
-    ),
-    tx.query<{ code: string; name: string }>(
-      `SELECT code, name
-         FROM code_masters
-        WHERE domain_key = 'BILL_CLOSE' AND is_active = true
-        ORDER BY display_order ASC, code ASC`,
-      [],
-    ),
-  ]);
+  type TsJson = { opening_balance_date: string; default_ar_list_date_mode: number };
+  type PartnerJson = {
+    id: string;
+    partner_code: string;
+    partner_name: string;
+    is_individual_honorific: boolean;
+    representative_name: string | null;
+    is_client: boolean;
+    is_supplier: boolean;
+  };
+  type ProjectJson = {
+    id: string;
+    project_no: string;
+    project_name: string;
+    partner_id: string;
+    status: string;
+  };
+  type MethodJson = { method_code: string; method_name: string };
+  type ClosingJson = { code: string; name: string };
 
-  const settings = tsRows[0];
-  if (settings === undefined) {
+  const rows = await tx.query<{
+    ts_json: TsJson | string | null;
+    partners_json: PartnerJson[] | string;
+    projects_json: ProjectJson[] | string;
+    methods_json: MethodJson[] | string;
+    closing_days_json: ClosingJson[] | string;
+  }>(
+    `SELECT
+       (
+         SELECT json_build_object(
+           'opening_balance_date', ts.opening_balance_date::text,
+           'default_ar_list_date_mode', ts.default_ar_list_date_mode
+         )
+           FROM tenant_settings ts
+          WHERE ts.tenant_id = $1::uuid
+          LIMIT 1
+       ) AS ts_json,
+       COALESCE(
+         (
+           SELECT json_agg(row_to_json(bp) ORDER BY bp.is_supplier DESC, bp.partner_code ASC)
+             FROM (
+               SELECT bp.id, bp.partner_code, bp.partner_name, bp.is_individual_honorific,
+                      r.representative_name, bp.is_client, bp.is_supplier
+                 FROM business_partners bp
+                 LEFT JOIN representatives r ON r.tenant_id = bp.tenant_id AND r.id = bp.representative_id
+                WHERE bp.is_deleted = false
+             ) bp
+         ),
+         '[]'::json
+       ) AS partners_json,
+       COALESCE(
+         (
+           SELECT json_agg(
+             json_build_object(
+               'id', pj.id,
+               'project_no', pj.project_no,
+               'project_name', pj.project_name,
+               'partner_id', pj.partner_id,
+               'status', pj.status
+             )
+             ORDER BY pj.project_no_num DESC
+           )
+             FROM (
+               SELECT id, project_no::text AS project_no, project_no AS project_no_num,
+                      project_name, partner_id, status::text AS status
+                 FROM projects
+             ) pj
+         ),
+         '[]'::json
+       ) AS projects_json,
+       COALESCE(
+         (
+           SELECT json_agg(
+             json_build_object('method_code', pm.method_code, 'method_name', pm.method_name)
+             ORDER BY pm.method_code ASC
+           )
+             FROM payment_methods pm
+         ),
+         '[]'::json
+       ) AS methods_json,
+       COALESCE(
+         (
+           SELECT json_agg(
+             json_build_object('code', cm.code, 'name', cm.name)
+             ORDER BY cm.display_order ASC, cm.code ASC
+           )
+             FROM code_masters cm
+            WHERE cm.domain_key = 'BILL_CLOSE' AND cm.is_active = true
+         ),
+         '[]'::json
+       ) AS closing_days_json`,
+    [tenantId],
+  );
+
+  const dbRow = rows[0];
+  if (dbRow === undefined || dbRow.ts_json === null) {
     throw new MasterDataError(404, 'TENANT_SETTINGS_NOT_FOUND', '自社設定が見つかりません。');
   }
+
+  const settings = parsePayablesJson<TsJson>(dbRow.ts_json);
+  const partnerRows = parsePayablesJson<PartnerJson[]>(dbRow.partners_json);
+  const projectRows = parsePayablesJson<ProjectJson[]>(dbRow.projects_json);
+  const methodRows = parsePayablesJson<MethodJson[]>(dbRow.methods_json);
+  const closingRows = parsePayablesJson<ClosingJson[]>(dbRow.closing_days_json);
 
   return {
     openingBalanceDate: settings.opening_balance_date.slice(0, 10),

@@ -129,6 +129,13 @@ function computeConsumptionPercent(actual: bigint, budget: bigint): string {
     .toFixed(1);
 }
 
+function parseProjectsJson<T>(raw: T | string): T {
+  if (typeof raw === 'string') {
+    return JSON.parse(raw) as T;
+  }
+  return raw;
+}
+
 export async function getProjectsLookups(
   tx: DbExecutor,
   tenantId: string,
@@ -163,128 +170,183 @@ export async function getProjectsLookups(
     await requireFeature(tx, tenantId, 'construction');
   }
 
-  const settingsRows = await tx.query<{
+  type TsJson = {
     opening_balance_date: string;
     cost_tax_mode: CostTaxMode;
     tax_calc_policy: TaxCalcPolicy;
     default_rounding_mode: RoundingMode;
+  };
+  type PartnerJson = {
+    id: string;
+    partner_code: string;
+    partner_name: string;
+    is_individual_honorific: boolean;
+    representative_name: string | null;
+    is_client: boolean;
+  };
+  type EmployeeJson = { id: string; syain_code: string; syain_name: string };
+  type CodeJson = { code: string; name: string };
+  type ProductJson = {
+    id: string;
+    product_code: string;
+    product_name: string;
+    product_name_sub: string | null;
+    unit_name: string | null;
+    standard_unit_price: string;
+    standard_cost_price: string;
+    default_tax_code: TaxCode;
+    is_heading: boolean;
+  };
+  type IntelJson = {
+    id: string;
+    item_name: string;
+    unit_name: string | null;
+    unit_price: string;
+    cost_price: string;
+    tax_code: TaxCode;
+  };
+  type UnitJson = { id: string; unit_code: string; unit_name: string };
+  type TaxJson = {
+    tax_code: TaxCode;
+    tax_name: string;
+    tax_rate: string;
+    mark_symbol: string;
+    is_internal: boolean;
+  };
+
+  const rows = await tx.query<{
+    ts_json: TsJson | string | null;
+    partners_json: PartnerJson[] | string;
+    employees_json: EmployeeJson[] | string;
+    order_kinds_json: CodeJson[] | string;
+    sub_statuses_json: CodeJson[] | string;
+    products_json: ProductJson[] | string;
+    intelligences_json: IntelJson[] | string;
+    units_json: UnitJson[] | string;
+    tax_codes_json: TaxJson[] | string;
   }>(
-    `SELECT opening_balance_date::text AS opening_balance_date,
-            cost_tax_mode::text AS cost_tax_mode,
-            tax_calc_policy::text AS tax_calc_policy,
-            default_rounding_mode::text AS default_rounding_mode
-       FROM tenant_settings
-      WHERE tenant_id = $1::uuid
-      LIMIT 1`,
+    `SELECT
+       (
+         SELECT json_build_object(
+           'opening_balance_date', ts.opening_balance_date::text,
+           'cost_tax_mode', ts.cost_tax_mode::text,
+           'tax_calc_policy', ts.tax_calc_policy::text,
+           'default_rounding_mode', ts.default_rounding_mode::text
+         )
+           FROM tenant_settings ts
+          WHERE ts.tenant_id = $1::uuid
+          LIMIT 1
+       ) AS ts_json,
+       COALESCE(
+         (
+           SELECT json_agg(row_to_json(bp) ORDER BY bp.is_client DESC, bp.partner_code ASC)
+             FROM (
+               SELECT bp.id, bp.partner_code, bp.partner_name, bp.is_individual_honorific,
+                      r.representative_name, bp.is_client
+                 FROM business_partners bp
+                 LEFT JOIN representatives r ON r.tenant_id = bp.tenant_id AND r.id = bp.representative_id
+                WHERE bp.is_deleted = false
+             ) bp
+         ),
+         '[]'::json
+       ) AS partners_json,
+       COALESCE(
+         (
+           SELECT json_agg(
+             json_build_object('id', e.id, 'syain_code', e.syain_code, 'syain_name', e.syain_name)
+             ORDER BY e.syain_code ASC
+           )
+             FROM employees e
+            WHERE e.is_retired = false
+         ),
+         '[]'::json
+       ) AS employees_json,
+       COALESCE(
+         (
+           SELECT json_agg(
+             json_build_object('code', cm.code, 'name', cm.name)
+             ORDER BY cm.display_order ASC, cm.code ASC
+           )
+             FROM code_masters cm
+            WHERE cm.domain_key = 'ORDER_KIND' AND cm.is_active = true
+         ),
+         '[]'::json
+       ) AS order_kinds_json,
+       COALESCE(
+         (
+           SELECT json_agg(
+             json_build_object('code', cm.code, 'name', cm.name)
+             ORDER BY cm.display_order ASC, cm.code ASC
+           )
+             FROM code_masters cm
+            WHERE cm.domain_key = 'PROJECT_SUB_STATUS' AND cm.is_active = true
+         ),
+         '[]'::json
+       ) AS sub_statuses_json,
+       COALESCE(
+         (
+           SELECT json_agg(row_to_json(pr) ORDER BY pr.product_code ASC)
+             FROM (
+               SELECT p.id, p.product_code, p.product_name, p.product_name_sub, u.unit_name,
+                      p.standard_unit_price::text AS standard_unit_price,
+                      p.standard_cost_price::text AS standard_cost_price,
+                      p.default_tax_code, p.is_heading
+                 FROM products p
+                 LEFT JOIN units u ON u.tenant_id = p.tenant_id AND u.id = p.unit_id
+                WHERE p.is_deleted = false
+             ) pr
+         ),
+         '[]'::json
+       ) AS products_json,
+       COALESCE(
+         (
+           SELECT json_agg(row_to_json(ii) ORDER BY ii.item_name ASC)
+             FROM (
+               SELECT id, item_name, unit_name, unit_price::text AS unit_price,
+                      cost_price::text AS cost_price, tax_code
+                 FROM input_intelligences
+             ) ii
+         ),
+         '[]'::json
+       ) AS intelligences_json,
+       COALESCE(
+         (
+           SELECT json_agg(
+             json_build_object('id', u.id, 'unit_code', u.unit_code, 'unit_name', u.unit_name)
+             ORDER BY u.display_order ASC, u.unit_code ASC
+           )
+             FROM units u
+            WHERE u.is_deleted = false
+         ),
+         '[]'::json
+       ) AS units_json,
+       COALESCE(
+         (
+           SELECT json_agg(row_to_json(tc) ORDER BY tc.tax_code ASC)
+             FROM (
+               SELECT tax_code, tax_name, tax_rate::text AS tax_rate, mark_symbol, is_internal
+                 FROM tax_codes
+             ) tc
+         ),
+         '[]'::json
+       ) AS tax_codes_json`,
     [tenantId],
   );
-  const settings = settingsRows[0];
-  if (settings === undefined) {
+
+  const dbRow = rows[0];
+  if (dbRow === undefined || dbRow.ts_json === null) {
     throw new MasterDataError(404, 'TENANT_SETTINGS_NOT_FOUND', '自社設定が見つかりません。');
   }
 
-  const [
-    partnerRows,
-    employeeRows,
-    orderKindRows,
-    subStatusRows,
-    productRows,
-    intelRows,
-    unitRows,
-    taxRows,
-  ] = await Promise.all([
-    tx.query<{
-      id: string;
-      partner_code: string;
-      partner_name: string;
-      is_individual_honorific: boolean;
-      representative_name: string | null;
-      is_client: boolean;
-    }>(
-      `SELECT bp.id, bp.partner_code, bp.partner_name, bp.is_individual_honorific,
-              r.representative_name, bp.is_client
-         FROM business_partners bp
-         LEFT JOIN representatives r ON r.tenant_id = bp.tenant_id AND r.id = bp.representative_id
-        WHERE bp.is_deleted = false
-        ORDER BY bp.is_client DESC, bp.partner_code ASC`,
-      [],
-    ),
-    tx.query<{ id: string; syain_code: string; syain_name: string }>(
-      `SELECT id, syain_code, syain_name
-         FROM employees
-        WHERE is_retired = false
-        ORDER BY syain_code ASC`,
-      [],
-    ),
-    tx.query<{ code: string; name: string }>(
-      `SELECT code, name
-         FROM code_masters
-        WHERE domain_key = 'ORDER_KIND' AND is_active = true
-        ORDER BY display_order ASC, code ASC`,
-      [],
-    ),
-    tx.query<{ code: string; name: string }>(
-      `SELECT code, name
-         FROM code_masters
-        WHERE domain_key = 'PROJECT_SUB_STATUS' AND is_active = true
-        ORDER BY display_order ASC, code ASC`,
-      [],
-    ),
-    tx.query<{
-      id: string;
-      product_code: string;
-      product_name: string;
-      product_name_sub: string | null;
-      unit_name: string | null;
-      standard_unit_price: string;
-      standard_cost_price: string;
-      default_tax_code: TaxCode;
-      is_heading: boolean;
-    }>(
-      `SELECT p.id, p.product_code, p.product_name, p.product_name_sub, u.unit_name,
-              p.standard_unit_price::text AS standard_unit_price,
-              p.standard_cost_price::text AS standard_cost_price,
-              p.default_tax_code, p.is_heading
-         FROM products p
-         LEFT JOIN units u ON u.tenant_id = p.tenant_id AND u.id = p.unit_id
-        WHERE p.is_deleted = false
-        ORDER BY p.product_code ASC`,
-      [],
-    ),
-    tx.query<{
-      id: string;
-      item_name: string;
-      unit_name: string | null;
-      unit_price: string;
-      cost_price: string;
-      tax_code: TaxCode;
-    }>(
-      `SELECT id, item_name, unit_name, unit_price::text AS unit_price,
-              cost_price::text AS cost_price, tax_code
-         FROM input_intelligences
-        ORDER BY item_name ASC`,
-      [],
-    ),
-    tx.query<{ id: string; unit_code: string; unit_name: string }>(
-      `SELECT id, unit_code, unit_name
-         FROM units
-        WHERE is_deleted = false
-        ORDER BY display_order ASC, unit_code ASC`,
-      [],
-    ),
-    tx.query<{
-      tax_code: TaxCode;
-      tax_name: string;
-      tax_rate: string;
-      mark_symbol: string;
-      is_internal: boolean;
-    }>(
-      `SELECT tax_code, tax_name, tax_rate::text AS tax_rate, mark_symbol, is_internal
-         FROM tax_codes
-        ORDER BY tax_code ASC`,
-      [],
-    ),
-  ]);
+  const settings = parseProjectsJson<TsJson>(dbRow.ts_json);
+  const partnerRows = parseProjectsJson<PartnerJson[]>(dbRow.partners_json);
+  const employeeRows = parseProjectsJson<EmployeeJson[]>(dbRow.employees_json);
+  const orderKindRows = parseProjectsJson<CodeJson[]>(dbRow.order_kinds_json);
+  const subStatusRows = parseProjectsJson<CodeJson[]>(dbRow.sub_statuses_json);
+  const productRows = parseProjectsJson<ProductJson[]>(dbRow.products_json);
+  const intelRows = parseProjectsJson<IntelJson[]>(dbRow.intelligences_json);
+  const unitRows = parseProjectsJson<UnitJson[]>(dbRow.units_json);
+  const taxRows = parseProjectsJson<TaxJson[]>(dbRow.tax_codes_json);
 
   return {
     openingBalanceDate: settings.opening_balance_date.slice(0, 10),

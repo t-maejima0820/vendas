@@ -51,11 +51,22 @@ export async function withExecutorTenantContext<T>(
     } else {
       throw new DatabaseExecutionError(`未許可のDBロール指定です: ${String(roleName)}`);
     }
-    await executor.query("SELECT set_config('app.current_tenant_id', $1, true)", [context.tenantId]);
-    if (context.employeeId !== undefined && context.employeeId !== null) {
-      await executor.query("SELECT set_config('app.current_employee_id', $1, true)", [context.employeeId]);
-    }
-    const result = await fn(executor);
+    const empIdParam =
+      context.employeeId !== undefined && context.employeeId !== null ? context.employeeId : null;
+    await executor.query(
+      "SELECT set_config('app.current_tenant_id', $1, true), CASE WHEN $2::text IS NOT NULL THEN set_config('app.current_employee_id', $2, true) ELSE NULL END",
+      [context.tenantId, empIdParam],
+    );
+    const client = executor;
+    const tx: DbExecutor = {
+      query<R extends Record<string, unknown>>(
+        sql: string,
+        params?: readonly unknown[],
+      ): Promise<R[]> {
+        return client.query<R>(sql, params);
+      },
+    };
+    const result = await fn(tx);
     await executor.query('COMMIT');
     return result;
   } catch (err) {

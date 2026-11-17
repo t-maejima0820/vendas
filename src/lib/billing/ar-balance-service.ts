@@ -102,10 +102,21 @@ export function proposePaymentDueDate(
   return formatIsoUtcDate(targetYear, targetMonth, day);
 }
 
+function parseJsonRows<T>(raw: T[] | string): T[] {
+  if (Array.isArray(raw)) {
+    return raw;
+  }
+  const parsed = JSON.parse(raw) as unknown;
+  if (!Array.isArray(parsed)) {
+    throw new Error('売掛残高JSONデータの形式が不正です。');
+  }
+  return parsed as T[];
+}
+
 /**
  * 売掛繰越・残高計算共通サービス（旧Access BillUpdateDetailPrice 単一行入金＆期首漏れバグを是正）
  * - opening_balance_date (D0) を起点に、対象期間 [D1, D2] の前期末繰越および期間内全入金合算を算出する
- * - Phase 3-A 請求確定および Phase 3-B 売掛残高一覧の双方で共用可能
+ * - Phase 3-A 請求確定および Phase 3-B 売掛残高一覧の双方で共用可能（単一CTEクエリで一括取得）
  */
 export async function calculatePartnersArBalances(
   tx: DbExecutor,
@@ -151,45 +162,80 @@ export async function calculatePartnersArBalances(
     excludeBillingId = params.excludeBillingId.trim();
   }
 
-  const tsRows = await tx.query<{ opening_balance_date: string }>(
-    `SELECT opening_balance_date::text AS opening_balance_date
-       FROM tenant_settings
-      WHERE tenant_id = $1::uuid
-      LIMIT 1`,
-    [params.tenantId],
-  );
-  const tsRow = tsRows[0];
-  if (tsRow === undefined) {
-    throw new MasterDataError(404, 'TENANT_SETTINGS_NOT_FOUND', '自社設定が見つかりません。');
-  }
-  const openingBalanceDate = tsRow.opening_balance_date.slice(0, 10);
-
-  const partnerRows = await tx.query<{ id: string; opening_ar_balance: string }>(
-    `SELECT id, opening_ar_balance::text AS opening_ar_balance
-       FROM business_partners
-      WHERE id = ANY($1::uuid[])`,
-    [uniqueIds],
-  );
-  const openingMap = new Map(partnerRows.map((p) => [p.id, BigInt(p.opening_ar_balance)]));
-
-  const billingAggRows = await tx.query<{
+  type PartnerOpeningRow = { id: string; opening_ar_balance: string };
+  type BillingAggRow = {
     partner_id: string;
     before_billings: string;
     in_period_billings: string;
+  };
+  type ReceiptAggRow = {
+    partner_id: string;
+    before_receipts: string;
+    in_period_receipts: string;
+  };
+
+  const aggRows = await tx.query<{
+    opening_balance_date: string | null;
+    partners_json: PartnerOpeningRow[] | string;
+    billings_json: BillingAggRow[] | string;
+    receipts_json: ReceiptAggRow[] | string;
   }>(
-    `SELECT partner_id,
-            COALESCE(SUM(billing_amount) FILTER (
-              WHERE billing_date > $2::date AND billing_date < $3::date
-            ), 0)::text AS before_billings,
-            COALESCE(SUM(billing_amount) FILTER (
-              WHERE billing_date > $2::date AND billing_date >= $3::date AND billing_date <= $4::date
-            ), 0)::text AS in_period_billings
-       FROM billing_headers
-      WHERE partner_id = ANY($1::uuid[])
-        AND ($5::uuid IS NULL OR id <> $5::uuid)
-      GROUP BY partner_id`,
-    [uniqueIds, openingBalanceDate, periodStart, periodEnd, excludeBillingId],
+    `WITH ts AS (
+       SELECT opening_balance_date::text AS opening_balance_date
+         FROM tenant_settings
+        WHERE tenant_id = $1::uuid
+        LIMIT 1
+     ),
+     bp AS (
+       SELECT id, opening_ar_balance::text AS opening_ar_balance
+         FROM business_partners
+        WHERE id = ANY($2::uuid[])
+     ),
+     bill AS (
+       SELECT bh.partner_id,
+              COALESCE(SUM(bh.billing_amount) FILTER (
+                WHERE bh.billing_date > ts.opening_balance_date::date AND bh.billing_date < $3::date
+              ), 0)::text AS before_billings,
+              COALESCE(SUM(bh.billing_amount) FILTER (
+                WHERE bh.billing_date > ts.opening_balance_date::date AND bh.billing_date >= $3::date AND bh.billing_date <= $4::date
+              ), 0)::text AS in_period_billings
+         FROM billing_headers bh
+        CROSS JOIN ts
+        WHERE bh.partner_id = ANY($2::uuid[])
+          AND ($5::uuid IS NULL OR bh.id <> $5::uuid)
+        GROUP BY bh.partner_id
+     ),
+     rec AS (
+       SELECT cr.partner_id,
+              COALESCE(SUM(cr.total_deposit) FILTER (
+                WHERE cr.receipt_date > ts.opening_balance_date::date AND cr.receipt_date < $3::date
+              ), 0)::text AS before_receipts,
+              COALESCE(SUM(cr.total_deposit) FILTER (
+                WHERE cr.receipt_date > ts.opening_balance_date::date AND cr.receipt_date >= $3::date AND cr.receipt_date <= $4::date
+              ), 0)::text AS in_period_receipts
+         FROM cash_receipts cr
+        CROSS JOIN ts
+        WHERE cr.partner_id = ANY($2::uuid[])
+        GROUP BY cr.partner_id
+     )
+     SELECT
+       (SELECT opening_balance_date FROM ts) AS opening_balance_date,
+       COALESCE((SELECT json_agg(row_to_json(bp)) FROM bp), '[]'::json) AS partners_json,
+       COALESCE((SELECT json_agg(row_to_json(bill)) FROM bill), '[]'::json) AS billings_json,
+       COALESCE((SELECT json_agg(row_to_json(rec)) FROM rec), '[]'::json) AS receipts_json`,
+    [params.tenantId, uniqueIds, periodStart, periodEnd, excludeBillingId],
   );
+
+  const aggRow = aggRows[0];
+  if (aggRow === undefined || aggRow.opening_balance_date === null) {
+    throw new MasterDataError(404, 'TENANT_SETTINGS_NOT_FOUND', '自社設定が見つかりません。');
+  }
+  const openingBalanceDate = aggRow.opening_balance_date.slice(0, 10);
+
+  const partnerRows = parseJsonRows<PartnerOpeningRow>(aggRow.partners_json);
+  const openingMap = new Map(partnerRows.map((p) => [p.id, BigInt(p.opening_ar_balance)]));
+
+  const billingAggRows = parseJsonRows<BillingAggRow>(aggRow.billings_json);
   const billingAggMap = new Map(
     billingAggRows.map((r) => [
       r.partner_id,
@@ -200,23 +246,7 @@ export async function calculatePartnersArBalances(
     ]),
   );
 
-  const receiptAggRows = await tx.query<{
-    partner_id: string;
-    before_receipts: string;
-    in_period_receipts: string;
-  }>(
-    `SELECT partner_id,
-            COALESCE(SUM(total_deposit) FILTER (
-              WHERE receipt_date > $2::date AND receipt_date < $3::date
-            ), 0)::text AS before_receipts,
-            COALESCE(SUM(total_deposit) FILTER (
-              WHERE receipt_date > $2::date AND receipt_date >= $3::date AND receipt_date <= $4::date
-            ), 0)::text AS in_period_receipts
-       FROM cash_receipts
-      WHERE partner_id = ANY($1::uuid[])
-      GROUP BY partner_id`,
-    [uniqueIds, openingBalanceDate, periodStart, periodEnd],
-  );
+  const receiptAggRows = parseJsonRows<ReceiptAggRow>(aggRow.receipts_json);
   const receiptAggMap = new Map(
     receiptAggRows.map((r) => [
       r.partner_id,

@@ -1,29 +1,17 @@
-import { cookies } from 'next/headers';
 import Link from 'next/link';
-import { redirect } from 'next/navigation';
 import SettingsClient from '@/app/(dashboard)/settings/SettingsClient';
-import { verifyActiveSessionInDb } from '@/lib/auth/auth-service';
-import { epochSeconds, SESSION_COOKIE_NAME, verifySessionToken } from '@/lib/auth/session';
-import { withTenantContext } from '@/lib/db/tenant-client';
+import { runWithPageSession } from '@/lib/auth/page-session';
 import { requireEnv } from '@/lib/env';
 import { getTenantSettingsForAdmin } from '@/lib/settings/settings-service';
 
 export default async function SettingsPage() {
-  const cookieStore = await cookies();
-  const rawToken = cookieStore.get(SESSION_COOKIE_NAME)?.value;
-  if (rawToken === undefined || rawToken === '') {
-    redirect('/login');
-  }
-
-  const tokenSession = verifySessionToken(rawToken, epochSeconds());
   const encKey = requireEnv('FIELD_ENCRYPTION_KEY_HEX');
 
-  const result = await withTenantContext(tokenSession, async (tx) => {
-    const live = await verifyActiveSessionInDb(tx, tokenSession);
-    if (!live.isAdmin) {
+  const result = await runWithPageSession(async ({ user, tx }) => {
+    if (!user.isAdmin) {
       return { authorized: false as const };
     }
-    const settings = await getTenantSettingsForAdmin(tx, live.tenantId, encKey);
+    const settings = await getTenantSettingsForAdmin(tx, user.tenantId, encKey);
     return { authorized: true as const, settings };
   });
 

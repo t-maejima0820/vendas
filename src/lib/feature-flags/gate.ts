@@ -38,20 +38,50 @@ export class FeatureDisabledError extends Error {
   }
 }
 
+/**
+ * トランザクション単位（txオブジェクト参照）に紐づく機能権限キャッシュ。
+ * リクエストを跨ぐグローバルキャッシュは持たず、設定画面での即時反映・テスト隔離と両立する。
+ */
+const txFeatureCache = new WeakMap<DbExecutor, Map<string, Map<string, boolean>>>();
+
+export function primeFeatureCacheForTx(
+  tx: DbExecutor,
+  tenantId: string,
+  features: ReadonlyMap<string, boolean>,
+): void {
+  let byTenant = txFeatureCache.get(tx);
+  if (byTenant === undefined) {
+    byTenant = new Map<string, Map<string, boolean>>();
+    txFeatureCache.set(tx, byTenant);
+  }
+  byTenant.set(tenantId, new Map(features));
+}
+
+export function clearFeatureCacheForTx(tx: DbExecutor): void {
+  txFeatureCache.delete(tx);
+}
+
 export async function isFeatureEnabled(
   tx: DbExecutor,
   tenantId: string,
   featureCode: VendasFeatureCode,
 ): Promise<boolean> {
-  const rows = await tx.query<{ is_enabled: boolean }>(
-    'SELECT is_enabled FROM tenant_feature_authorities WHERE tenant_id = $1 AND feature_code = $2',
-    [tenantId, featureCode],
-  );
-  const first = rows[0];
-  if (first === undefined) {
-    return false;
+  const byTenant = txFeatureCache.get(tx);
+  const cachedMap = byTenant?.get(tenantId);
+  if (cachedMap !== undefined) {
+    return cachedMap.get(featureCode) === true;
   }
-  return first.is_enabled;
+
+  const rows = await tx.query<{ feature_code: string; is_enabled: boolean }>(
+    'SELECT feature_code, is_enabled FROM tenant_feature_authorities WHERE tenant_id = $1',
+    [tenantId],
+  );
+  const nextMap = new Map<string, boolean>();
+  for (const r of rows) {
+    nextMap.set(r.feature_code, r.is_enabled === true);
+  }
+  primeFeatureCacheForTx(tx, tenantId, nextMap);
+  return nextMap.get(featureCode) === true;
 }
 
 export async function requireFeature(

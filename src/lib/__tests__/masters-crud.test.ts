@@ -182,10 +182,17 @@ describe('Phase 1-B 基幹4マスタ CRUD・暗号化・権限・セッション
       ),
     );
     try {
-      const lookups = await withExecutorTenantContext(
+      const lookupsDefault = await withExecutorTenantContext(
         exec,
         { tenantId, employeeId: staffEmpId, role: 'vendas_app' },
         async (tx) => getMasterLookups(tx),
+      );
+      expect(lookupsDefault.bankBranches).toHaveLength(0);
+
+      const lookups = await withExecutorTenantContext(
+        exec,
+        { tenantId, employeeId: staffEmpId, role: 'vendas_app' },
+        async (tx) => getMasterLookups(tx, { includeBankBranches: true }),
       );
       expect(lookups.openingBalanceDate).toBe('2026-06-01');
       expect(lookups.units).toHaveLength(25);
@@ -199,12 +206,20 @@ describe('Phase 1-B 基幹4マスタ CRUD・暗号化・権限・セッション
       expect(lookups.consumptionTaxTypes.length).toBeGreaterThanOrEqual(11);
 
       const apiRes = await getLookupsRoute(
-        buildApiRequest('http://localhost:3000/api/v1/masters/lookups', 'GET', staffToken),
+        buildApiRequest(
+          'http://localhost:3000/api/v1/masters/lookups?includeBankBranches=true',
+          'GET',
+          staffToken,
+        ),
       );
       expect(apiRes.status).toBe(200);
-      const apiBody = (await apiRes.json()) as { ok: boolean; lookups: { units: unknown[] } };
+      const apiBody = (await apiRes.json()) as {
+        ok: boolean;
+        lookups: { units: unknown[]; bankBranches: unknown[] };
+      };
       expect(apiBody.ok).toBe(true);
       expect(apiBody.lookups.units).toHaveLength(25);
+      expect(apiBody.lookups.bankBranches).toHaveLength(1);
     } finally {
       spyCtx.mockRestore();
       vi.unstubAllEnvs();

@@ -13,6 +13,7 @@ import {
   type TaxCalcPolicy,
 } from '@/lib/domain/calculations';
 import { COST_CATEGORY_LABELS } from '@/lib/estimates/types';
+import { primeFeatureCacheForTx } from '@/lib/feature-flags/gate';
 import { MasterDataError } from '@/lib/masters/error-mapper';
 import { calculatePartnersApBalances } from '@/lib/payables/ap-balance-service';
 import { COST_CATEGORY_LIST } from '@/lib/projects/types';
@@ -149,6 +150,110 @@ function normalizeTargetMonth(raw: string | null | undefined): string {
   );
 }
 
+function parseJsonValue<T>(raw: T | string): T {
+  if (typeof raw === 'string') {
+    return JSON.parse(raw) as T;
+  }
+  return raw;
+}
+
+interface DashboardFeatureRow {
+  feature_code: string;
+  is_enabled: boolean;
+}
+
+interface DashboardSalesKpiRaw {
+  sale_count: string;
+  sales_excl: string;
+  sales_tax: string;
+  sales_incl: string;
+  advance_count: string;
+  advance_incl: string;
+}
+
+interface DashboardBillingKpiRaw {
+  billing_count: string;
+  billing_amount_total: string;
+  fixed_count: string;
+  fixed_amount_total: string;
+}
+
+interface DashboardProjectRaw {
+  id: string;
+  project_no: string;
+  project_name: string;
+  partner_name: string;
+  status: string;
+  contract_subtotal: string;
+  contract_total: string;
+  budget_expense: string;
+  budget_labor: string;
+  budget_material: string;
+  budget_outsourcing: string;
+  budget_temporary: string;
+  budget_indirect: string;
+}
+
+interface DashboardProjectCostRaw {
+  project_id: string;
+  cost_category: CostCategory;
+  excl_sum: string;
+  incl_sum: string;
+}
+
+interface DashboardConsolidatedDbRow extends Record<string, unknown> {
+  company_name: string | null;
+  opening_balance_date: string | null;
+  cost_tax_mode: CostTaxMode | null;
+  tax_calc_policy: TaxCalcPolicy | null;
+  default_rounding_mode: RoundingMode | null;
+  approval_flow_enabled: boolean | null;
+  features_json: DashboardFeatureRow[] | string;
+  sales_kpi_json: DashboardSalesKpiRaw | string | null;
+  billing_kpi_json: DashboardBillingKpiRaw | string | null;
+  ar_partner_ids_json: string[] | string;
+  ap_supplier_ids_json: string[] | string;
+  projects_json: DashboardProjectRaw[] | string;
+  project_costs_json: DashboardProjectCostRaw[] | string;
+  sales_appr_json: { pending_cnt: string; rejected_cnt: string } | string | null;
+  sub_appr_json: { pending_cnt: string; rejected_cnt: string } | string | null;
+  unbilled_sales_json: { cnt: string; amt: string } | string | null;
+  unpaid_billings_json: { cnt: string; amt: string; overdue_cnt: string } | string | null;
+  aplus_fail_json: { cnt: string; unpaid: string } | string | null;
+  unconfirmed_purchases_json: { cnt: string; amt: string } | string | null;
+  unpaid_payables_json: { cnt: string; amt: string } | string | null;
+  recent_estimates_json:
+    | Array<{ id: string; no: string; title: string; dt: string; amt: string; st: string }>
+    | string;
+  recent_sales_json:
+    | Array<{
+        id: string;
+        entry_type: 'SALE' | 'ADVANCE';
+        no: string;
+        title: string;
+        dt: string;
+        amt: string;
+        st: string;
+      }>
+    | string;
+  recent_billings_json:
+    | Array<{
+        id: string;
+        no: string;
+        partner_name: string;
+        dt: string;
+        amt: string;
+        st: string;
+      }>
+    | string;
+  recent_projects_json:
+    | Array<{ id: string; no: string; title: string; dt: string; amt: string; st: string }>
+    | string;
+  recent_purchases_json:
+    | Array<{ id: string; no: string; title: string; dt: string; amt: string; st: string }>
+    | string;
+}
+
 export async function getDashboardOverview(
   tx: DbExecutor,
   tenantId: string,
@@ -157,16 +262,9 @@ export async function getDashboardOverview(
   const targetMonth = normalizeTargetMonth(targetMonthRaw);
   const { periodStart, periodEnd } = getMonthStartAndEndDates(targetMonth.replace('-', ''));
 
-  const [tsRows, featRows] = await Promise.all([
-    tx.query<{
-      company_name: string;
-      opening_balance_date: string;
-      cost_tax_mode: CostTaxMode;
-      tax_calc_policy: TaxCalcPolicy;
-      default_rounding_mode: RoundingMode;
-      approval_flow_enabled: boolean;
-    }>(
-      `SELECT company_name,
+  const consolidatedRows = await tx.query<DashboardConsolidatedDbRow>(
+    `WITH ts AS (
+       SELECT company_name,
               opening_balance_date::text AS opening_balance_date,
               cost_tax_mode::text AS cost_tax_mode,
               tax_calc_policy::text AS tax_calc_policy,
@@ -174,21 +272,343 @@ export async function getDashboardOverview(
               approval_flow_enabled
          FROM tenant_settings
         WHERE tenant_id = $1::uuid
-        LIMIT 1`,
-      [tenantId],
-    ),
-    tx.query<{ feature_code: string; is_enabled: boolean }>(
-      `SELECT feature_code, is_enabled
+        LIMIT 1
+     ),
+     feat AS (
+       SELECT feature_code, is_enabled
          FROM tenant_feature_authorities
-        WHERE tenant_id = $1::uuid`,
-      [tenantId],
-    ),
-  ]);
+        WHERE tenant_id = $1::uuid
+     ),
+     flags AS (
+       SELECT
+         COALESCE(BOOL_OR(is_enabled AND feature_code IN ('sales', 'tatekae')), false) AS sales_ok,
+         COALESCE(BOOL_OR(is_enabled AND feature_code IN ('billsummary', 'billissue', 'fixedbill')), false) AS billing_ok,
+         COALESCE(BOOL_OR(is_enabled AND feature_code IN ('receivable', 'deposit')), false) AS ar_ok,
+         COALESCE(BOOL_OR(is_enabled AND feature_code IN ('payable', 'payment', 'purchase')), false) AS ap_ok,
+         COALESCE(BOOL_OR(is_enabled AND feature_code IN ('construction', 'budget', 'cost')), false) AS project_ok,
+         COALESCE(BOOL_OR(is_enabled AND feature_code = 'aplus'), false) AS aplus_ok,
+         COALESCE(BOOL_OR(is_enabled AND feature_code = 'fixedbill'), false) AS fixedbill_ok,
+         COALESCE(BOOL_OR(is_enabled AND feature_code = 'estimate'), false) AS estimate_ok,
+         COALESCE(BOOL_OR(is_enabled AND feature_code = 'purchase'), false) AS purchase_ok,
+         COALESCE(BOOL_OR(is_enabled AND feature_code IN ('sales', 'tatekae', 'billsummary')), false) AS unbilled_ok,
+         COALESCE(BOOL_OR(is_enabled AND feature_code IN ('receivable', 'deposit', 'billissue')), false) AS unpaid_bill_ok
+       FROM feat
+     )
+     SELECT
+       (SELECT company_name FROM ts) AS company_name,
+       (SELECT opening_balance_date FROM ts) AS opening_balance_date,
+       (SELECT cost_tax_mode FROM ts) AS cost_tax_mode,
+       (SELECT tax_calc_policy FROM ts) AS tax_calc_policy,
+       (SELECT default_rounding_mode FROM ts) AS default_rounding_mode,
+       (SELECT approval_flow_enabled FROM ts) AS approval_flow_enabled,
+       COALESCE((SELECT json_agg(row_to_json(feat)) FROM feat), '[]'::json) AS features_json,
+       CASE
+         WHEN (SELECT sales_ok FROM flags) THEN (
+           SELECT json_build_object(
+             'sale_count', COUNT(*) FILTER (WHERE entry_type = 'SALE')::text,
+             'sales_excl', COALESCE(SUM(subtotal_amount) FILTER (WHERE entry_type = 'SALE'), 0)::text,
+             'sales_tax', COALESCE(SUM(tax_total) FILTER (WHERE entry_type = 'SALE'), 0)::text,
+             'sales_incl', COALESCE(SUM(total_amount) FILTER (WHERE entry_type = 'SALE'), 0)::text,
+             'advance_count', COUNT(*) FILTER (WHERE entry_type = 'ADVANCE')::text,
+             'advance_incl', COALESCE(SUM(total_amount) FILTER (WHERE entry_type = 'ADVANCE'), 0)::text
+           )
+             FROM sales_headers
+            WHERE tenant_id = $1::uuid
+              AND slip_date >= $2::date
+              AND slip_date <= $3::date
+         )
+         ELSE NULL
+       END AS sales_kpi_json,
+       CASE
+         WHEN (SELECT billing_ok FROM flags) THEN (
+           SELECT json_build_object(
+             'billing_count', COUNT(*)::text,
+             'billing_amount_total', COALESCE(SUM(billing_amount), 0)::text,
+             'fixed_count', COUNT(*) FILTER (WHERE is_subscription_bill = true)::text,
+             'fixed_amount_total', COALESCE(SUM(billing_amount) FILTER (WHERE is_subscription_bill = true), 0)::text
+           )
+             FROM billing_headers
+            WHERE tenant_id = $1::uuid
+              AND billing_date >= $2::date
+              AND billing_date <= $3::date
+         )
+         ELSE NULL
+       END AS billing_kpi_json,
+       CASE
+         WHEN (SELECT ar_ok FROM flags) THEN COALESCE((
+           SELECT json_agg(id)
+             FROM business_partners
+            WHERE tenant_id = $1::uuid
+              AND is_deleted = false
+              AND (is_client = true OR opening_ar_balance <> 0)
+         ), '[]'::json)
+         ELSE '[]'::json
+       END AS ar_partner_ids_json,
+       CASE
+         WHEN (SELECT ap_ok FROM flags) THEN COALESCE((
+           SELECT json_agg(id)
+             FROM business_partners
+            WHERE tenant_id = $1::uuid
+              AND is_deleted = false
+              AND (is_supplier = true OR opening_ap_balance <> 0)
+         ), '[]'::json)
+         ELSE '[]'::json
+       END AS ap_supplier_ids_json,
+       CASE
+         WHEN (SELECT project_ok FROM flags) THEN COALESCE((
+           SELECT json_agg(
+             json_build_object(
+               'id', pj.id,
+               'project_no', pj.project_no,
+               'project_name', pj.project_name,
+               'partner_name', pj.partner_name,
+               'status', pj.status,
+               'contract_subtotal', pj.contract_subtotal,
+               'contract_total', pj.contract_total,
+               'budget_expense', pj.budget_expense,
+               'budget_labor', pj.budget_labor,
+               'budget_material', pj.budget_material,
+               'budget_outsourcing', pj.budget_outsourcing,
+               'budget_temporary', pj.budget_temporary,
+               'budget_indirect', pj.budget_indirect
+             )
+             ORDER BY pj.project_date DESC, pj.project_no_num DESC
+           )
+             FROM (
+               SELECT p.id, p.project_no::text AS project_no, p.project_no AS project_no_num,
+                      p.project_date, p.project_name,
+                      COALESCE(bp.partner_name, '') AS partner_name,
+                      p.status::text AS status,
+                      p.contract_subtotal::text AS contract_subtotal,
+                      p.contract_total::text AS contract_total,
+                      p.budget_expense::text AS budget_expense,
+                      p.budget_labor::text AS budget_labor,
+                      p.budget_material::text AS budget_material,
+                      p.budget_outsourcing::text AS budget_outsourcing,
+                      p.budget_temporary::text AS budget_temporary,
+                      p.budget_indirect::text AS budget_indirect
+                 FROM projects p
+                 LEFT JOIN business_partners bp
+                   ON bp.tenant_id = p.tenant_id AND bp.id = p.partner_id
+                WHERE p.tenant_id = $1::uuid
+             ) pj
+         ), '[]'::json)
+         ELSE '[]'::json
+       END AS projects_json,
+       CASE
+         WHEN (SELECT project_ok FROM flags) THEN COALESCE((
+           SELECT json_agg(row_to_json(c))
+             FROM (
+               SELECT project_id,
+                      cost_category::text AS cost_category,
+                      COALESCE(SUM(subtotal_amount), 0)::text AS excl_sum,
+                      COALESCE(SUM(total_amount), 0)::text AS incl_sum
+                 FROM project_cost_headers
+                WHERE tenant_id = $1::uuid
+                GROUP BY project_id, cost_category
+             ) c
+         ), '[]'::json)
+         ELSE '[]'::json
+       END AS project_costs_json,
+       CASE
+         WHEN COALESCE((SELECT approval_flow_enabled FROM ts), false)
+          AND ((SELECT sales_ok FROM flags) OR (SELECT fixedbill_ok FROM flags)) THEN (
+           SELECT json_build_object(
+             'pending_cnt', COUNT(*) FILTER (WHERE approval_status = 0 AND status IN ('K1','K2','K3'))::text,
+             'rejected_cnt', COUNT(*) FILTER (WHERE approval_status = 2 AND status IN ('K1','K2','K3'))::text
+           )
+             FROM sales_headers
+            WHERE tenant_id = $1::uuid
+         )
+         ELSE NULL
+       END AS sales_appr_json,
+       CASE
+         WHEN COALESCE((SELECT approval_flow_enabled FROM ts), false)
+          AND (SELECT fixedbill_ok FROM flags) THEN (
+           SELECT json_build_object(
+             'pending_cnt', COUNT(*) FILTER (WHERE flow_status = 0)::text,
+             'rejected_cnt', COUNT(*) FILTER (WHERE flow_status = 2)::text
+           )
+             FROM subscription_approval_flows
+            WHERE tenant_id = $1::uuid
+         )
+         ELSE NULL
+       END AS sub_appr_json,
+       CASE
+         WHEN (SELECT unbilled_ok FROM flags) THEN (
+           SELECT json_build_object(
+             'cnt', COUNT(*)::text,
+             'amt', COALESCE(SUM(total_amount), 0)::text
+           )
+             FROM sales_headers
+            WHERE tenant_id = $1::uuid
+              AND status IN ('K1', 'K2', 'K3')
+         )
+         ELSE NULL
+       END AS unbilled_sales_json,
+       CASE
+         WHEN (SELECT unpaid_bill_ok FROM flags) THEN (
+           SELECT json_build_object(
+             'cnt', COUNT(*)::text,
+             'amt', COALESCE(SUM(billing_amount), 0)::text,
+             'overdue_cnt', COUNT(*) FILTER (WHERE payment_due_date IS NOT NULL AND payment_due_date < CURRENT_DATE)::text
+           )
+             FROM billing_headers
+            WHERE tenant_id = $1::uuid
+              AND status IN ('N1', 'N2')
+         )
+         ELSE NULL
+       END AS unpaid_billings_json,
+       CASE
+         WHEN (SELECT aplus_ok FROM flags) THEN (
+           SELECT json_build_object(
+             'cnt', COUNT(*)::text,
+             'unpaid', COALESCE(SUM(unpaid_amount), 0)::text
+           )
+             FROM aplus_imports
+            WHERE tenant_id = $1::uuid
+              AND (result_code <> '0' OR unpaid_amount > 0)
+         )
+         ELSE NULL
+       END AS aplus_fail_json,
+       CASE
+         WHEN (SELECT ap_ok FROM flags) THEN (
+           SELECT json_build_object(
+             'cnt', COUNT(*)::text,
+             'amt', COALESCE(SUM(total_amount), 0)::text
+           )
+             FROM purchases
+            WHERE tenant_id = $1::uuid
+              AND status IN ('P1', 'P2')
+         )
+         ELSE NULL
+       END AS unconfirmed_purchases_json,
+       CASE
+         WHEN (SELECT ap_ok FROM flags) THEN (
+           SELECT json_build_object(
+             'cnt', COUNT(*)::text,
+             'amt', COALESCE(SUM(payable_amount), 0)::text
+           )
+             FROM payable_ledgers
+            WHERE tenant_id = $1::uuid
+              AND status = 'A1'
+         )
+         ELSE NULL
+       END AS unpaid_payables_json,
+       CASE
+         WHEN (SELECT estimate_ok FROM flags) THEN COALESCE((
+           SELECT json_agg(
+             json_build_object('id', q.id, 'no', q.no, 'title', q.title, 'dt', q.dt, 'amt', q.amt, 'st', q.st)
+             ORDER BY q.updated_at DESC
+           )
+             FROM (
+               SELECT id, quotation_no::text AS no, quotation_name AS title,
+                      quotation_date::text AS dt, total_amount::text AS amt,
+                      status::text AS st, updated_at
+                 FROM quotations
+                WHERE tenant_id = $1::uuid
+                ORDER BY updated_at DESC
+                LIMIT 4
+             ) q
+         ), '[]'::json)
+         ELSE '[]'::json
+       END AS recent_estimates_json,
+       CASE
+         WHEN (SELECT sales_ok FROM flags) THEN COALESCE((
+           SELECT json_agg(
+             json_build_object('id', s.id, 'entry_type', s.entry_type, 'no', s.no, 'title', s.title, 'dt', s.dt, 'amt', s.amt, 'st', s.st)
+             ORDER BY s.updated_at DESC
+           )
+             FROM (
+               SELECT id, entry_type::text AS entry_type, slip_no::text AS no, slip_name AS title,
+                      slip_date::text AS dt, total_amount::text AS amt,
+                      status::text AS st, updated_at
+                 FROM sales_headers
+                WHERE tenant_id = $1::uuid
+                ORDER BY updated_at DESC
+                LIMIT 4
+             ) s
+         ), '[]'::json)
+         ELSE '[]'::json
+       END AS recent_sales_json,
+       CASE
+         WHEN (SELECT billing_ok FROM flags) THEN COALESCE((
+           SELECT json_agg(
+             json_build_object('id', b.id, 'no', b.no, 'partner_name', b.partner_name, 'dt', b.dt, 'amt', b.amt, 'st', b.st)
+             ORDER BY b.updated_at DESC
+           )
+             FROM (
+               SELECT bh.id, bh.billing_no::text AS no, COALESCE(bp.partner_name, '') AS partner_name,
+                      bh.billing_date::text AS dt, bh.billing_amount::text AS amt,
+                      bh.status::text AS st, bh.updated_at
+                 FROM billing_headers bh
+                 LEFT JOIN business_partners bp
+                   ON bp.tenant_id = bh.tenant_id AND bp.id = bh.partner_id
+                WHERE bh.tenant_id = $1::uuid
+                ORDER BY bh.updated_at DESC
+                LIMIT 4
+             ) b
+         ), '[]'::json)
+         ELSE '[]'::json
+       END AS recent_billings_json,
+       CASE
+         WHEN (SELECT project_ok FROM flags) THEN COALESCE((
+           SELECT json_agg(
+             json_build_object('id', pj.id, 'no', pj.no, 'title', pj.title, 'dt', pj.dt, 'amt', pj.amt, 'st', pj.st)
+             ORDER BY pj.updated_at DESC
+           )
+             FROM (
+               SELECT id, project_no::text AS no, project_name AS title,
+                      project_date::text AS dt, contract_total::text AS amt,
+                      status::text AS st, updated_at
+                 FROM projects
+                WHERE tenant_id = $1::uuid
+                ORDER BY updated_at DESC
+                LIMIT 4
+             ) pj
+         ), '[]'::json)
+         ELSE '[]'::json
+       END AS recent_projects_json,
+       CASE
+         WHEN (SELECT purchase_ok FROM flags) THEN COALESCE((
+           SELECT json_agg(
+             json_build_object('id', pu.id, 'no', pu.no, 'title', pu.title, 'dt', pu.dt, 'amt', pu.amt, 'st', pu.st)
+             ORDER BY pu.updated_at DESC
+           )
+             FROM (
+               SELECT id, purchase_no::text AS no, purchase_name AS title,
+                      purchase_date::text AS dt, total_amount::text AS amt,
+                      status::text AS st, updated_at
+                 FROM purchases
+                WHERE tenant_id = $1::uuid
+                ORDER BY updated_at DESC
+                LIMIT 4
+             ) pu
+         ), '[]'::json)
+         ELSE '[]'::json
+       END AS recent_purchases_json`,
+    [tenantId, periodStart, periodEnd],
+  );
 
-  const ts = tsRows[0];
-  if (ts === undefined) {
+  const dbRow = consolidatedRows[0];
+  if (
+    dbRow === undefined ||
+    dbRow.company_name === null ||
+    dbRow.opening_balance_date === null ||
+    dbRow.cost_tax_mode === null ||
+    dbRow.tax_calc_policy === null ||
+    dbRow.default_rounding_mode === null ||
+    dbRow.approval_flow_enabled === null
+  ) {
     throw new MasterDataError(404, 'TENANT_SETTINGS_NOT_FOUND', '自社設定が見つかりません。');
   }
+
+  const featRows = parseJsonValue<DashboardFeatureRow[]>(dbRow.features_json);
+  const featCacheMap = new Map<string, boolean>();
+  for (const f of featRows) {
+    featCacheMap.set(f.feature_code, f.is_enabled === true);
+  }
+  primeFeatureCacheForTx(tx, tenantId, featCacheMap);
 
   const enabledCodes = featRows.filter((f) => f.is_enabled).map((f) => f.feature_code);
   const enabledSet = new Set(enabledCodes);
@@ -202,80 +622,33 @@ export async function getDashboardOverview(
   const aplusEnabled = enabledSet.has('aplus');
   const teamsEnabled = enabledSet.has('teams');
 
-  // 1. 当月売上・立替KPI
   let salesKpi: DashboardOverviewDto['salesKpi'] = null;
-  if (salesEnabled) {
-    const sRows = await tx.query<{
-      sale_count: string;
-      sales_excl: string;
-      sales_tax: string;
-      sales_incl: string;
-      advance_count: string;
-      advance_incl: string;
-    }>(
-      `SELECT COUNT(*) FILTER (WHERE entry_type = 'SALE')::text AS sale_count,
-              COALESCE(SUM(subtotal_amount) FILTER (WHERE entry_type = 'SALE'), 0)::text AS sales_excl,
-              COALESCE(SUM(tax_total) FILTER (WHERE entry_type = 'SALE'), 0)::text AS sales_tax,
-              COALESCE(SUM(total_amount) FILTER (WHERE entry_type = 'SALE'), 0)::text AS sales_incl,
-              COUNT(*) FILTER (WHERE entry_type = 'ADVANCE')::text AS advance_count,
-              COALESCE(SUM(total_amount) FILTER (WHERE entry_type = 'ADVANCE'), 0)::text AS advance_incl
-         FROM sales_headers
-        WHERE tenant_id = $1::uuid
-          AND slip_date >= $2::date
-          AND slip_date <= $3::date`,
-      [tenantId, periodStart, periodEnd],
-    );
-    const sr = sRows[0];
+  if (salesEnabled && dbRow.sales_kpi_json !== null) {
+    const sr = parseJsonValue<DashboardSalesKpiRaw>(dbRow.sales_kpi_json);
     salesKpi = {
-      saleCount: sr !== undefined ? Number(sr.sale_count) : 0,
-      salesExclTotal: sr !== undefined ? Number(sr.sales_excl) : 0,
-      salesTaxTotal: sr !== undefined ? Number(sr.sales_tax) : 0,
-      salesInclTotal: sr !== undefined ? Number(sr.sales_incl) : 0,
-      advanceCount: sr !== undefined ? Number(sr.advance_count) : 0,
-      advanceInclTotal: sr !== undefined ? Number(sr.advance_incl) : 0,
+      saleCount: Number(sr.sale_count),
+      salesExclTotal: Number(sr.sales_excl),
+      salesTaxTotal: Number(sr.sales_tax),
+      salesInclTotal: Number(sr.sales_incl),
+      advanceCount: Number(sr.advance_count),
+      advanceInclTotal: Number(sr.advance_incl),
     };
   }
 
-  // 2. 当月請求確定KPI
   let billingKpi: DashboardOverviewDto['billingKpi'] = null;
-  if (billingEnabled) {
-    const bRows = await tx.query<{
-      billing_count: string;
-      billing_amount_total: string;
-      fixed_count: string;
-      fixed_amount_total: string;
-    }>(
-      `SELECT COUNT(*)::text AS billing_count,
-              COALESCE(SUM(billing_amount), 0)::text AS billing_amount_total,
-              COUNT(*) FILTER (WHERE is_subscription_bill = true)::text AS fixed_count,
-              COALESCE(SUM(billing_amount) FILTER (WHERE is_subscription_bill = true), 0)::text AS fixed_amount_total
-         FROM billing_headers
-        WHERE tenant_id = $1::uuid
-          AND billing_date >= $2::date
-          AND billing_date <= $3::date`,
-      [tenantId, periodStart, periodEnd],
-    );
-    const br = bRows[0];
+  if (billingEnabled && dbRow.billing_kpi_json !== null) {
+    const br = parseJsonValue<DashboardBillingKpiRaw>(dbRow.billing_kpi_json);
     billingKpi = {
-      billingCount: br !== undefined ? Number(br.billing_count) : 0,
-      billingAmountTotal: br !== undefined ? Number(br.billing_amount_total) : 0,
-      fixedBillingCount: br !== undefined ? Number(br.fixed_count) : 0,
-      fixedBillingAmountTotal: br !== undefined ? Number(br.fixed_amount_total) : 0,
+      billingCount: Number(br.billing_count),
+      billingAmountTotal: Number(br.billing_amount_total),
+      fixedBillingCount: Number(br.fixed_count),
+      fixedBillingAmountTotal: Number(br.fixed_amount_total),
     };
   }
 
-  // 3. 売掛残高KPI（ar-balance-service 共通ロジック使用）
   let arKpi: DashboardOverviewDto['arKpi'] = null;
   if (arEnabled) {
-    const clientRows = await tx.query<{ id: string }>(
-      `SELECT id
-         FROM business_partners
-        WHERE tenant_id = $1::uuid
-          AND is_deleted = false
-          AND (is_client = true OR opening_ar_balance <> 0)`,
-      [tenantId],
-    );
-    const partnerIds = clientRows.map((c) => c.id);
+    const partnerIds = parseJsonValue<string[]>(dbRow.ar_partner_ids_json);
     const arMap = await calculatePartnersArBalances(tx, {
       tenantId,
       partnerIds,
@@ -301,18 +674,9 @@ export async function getDashboardOverview(
     };
   }
 
-  // 4. 買掛残高KPI（ap-balance-service 共通ロジック使用）
   let apKpi: DashboardOverviewDto['apKpi'] = null;
   if (apEnabled) {
-    const supplierRows = await tx.query<{ id: string }>(
-      `SELECT id
-         FROM business_partners
-        WHERE tenant_id = $1::uuid
-          AND is_deleted = false
-          AND (is_supplier = true OR opening_ap_balance <> 0)`,
-      [tenantId],
-    );
-    const supplierIds = supplierRows.map((s) => s.id);
+    const supplierIds = parseJsonValue<string[]>(dbRow.ap_supplier_ids_json);
     const apMap = await calculatePartnersApBalances(tx, {
       tenantId,
       supplierIds,
@@ -338,59 +702,12 @@ export async function getDashboardOverview(
     };
   }
 
-  // 5. 稼働中案件契約・原価・粗利サマリ ＆ 予算超過アラート（calculateProjectProfit 一貫使用）
   let projectsKpi: DashboardOverviewDto['projectsKpi'] = null;
   let overBudgetProjects: DashboardOverBudgetProjectItem[] | null = null;
   if (projectEnabled) {
-    const pjRows = await tx.query<{
-      id: string;
-      project_no: string;
-      project_name: string;
-      partner_name: string;
-      status: string;
-      contract_subtotal: string;
-      contract_total: string;
-      budget_expense: string;
-      budget_labor: string;
-      budget_material: string;
-      budget_outsourcing: string;
-      budget_temporary: string;
-      budget_indirect: string;
-    }>(
-      `SELECT p.id, p.project_no::text AS project_no, p.project_name,
-              COALESCE(bp.partner_name, '') AS partner_name,
-              p.status::text AS status,
-              p.contract_subtotal::text AS contract_subtotal,
-              p.contract_total::text AS contract_total,
-              p.budget_expense::text AS budget_expense,
-              p.budget_labor::text AS budget_labor,
-              p.budget_material::text AS budget_material,
-              p.budget_outsourcing::text AS budget_outsourcing,
-              p.budget_temporary::text AS budget_temporary,
-              p.budget_indirect::text AS budget_indirect
-         FROM projects p
-         LEFT JOIN business_partners bp
-           ON bp.tenant_id = p.tenant_id AND bp.id = p.partner_id
-        WHERE p.tenant_id = $1::uuid
-        ORDER BY p.project_date DESC, p.project_no DESC`,
-      [tenantId],
-    );
-
-    const costRows = await tx.query<{
-      project_id: string;
-      cost_category: CostCategory;
-      excl_sum: string;
-      incl_sum: string;
-    }>(
-      `SELECT project_id,
-              cost_category::text AS cost_category,
-              COALESCE(SUM(subtotal_amount), 0)::text AS excl_sum,
-              COALESCE(SUM(total_amount), 0)::text AS incl_sum
-         FROM project_cost_headers
-        WHERE tenant_id = $1::uuid
-        GROUP BY project_id, cost_category`,
-      [tenantId],
-    );
+    const pjRows = parseJsonValue<DashboardProjectRaw[]>(dbRow.projects_json);
+    const costRows = parseJsonValue<DashboardProjectCostRaw[]>(dbRow.project_costs_json);
+    const costTaxMode = dbRow.cost_tax_mode;
 
     const costByProject = new Map<
       string,
@@ -467,7 +784,7 @@ export async function getDashboardOverview(
       };
 
       const profit = calculateProjectProfit({
-        costTaxMode: ts.cost_tax_mode,
+        costTaxMode,
         contractSubtotal: BigInt(pj.contract_subtotal),
         contractTotal: BigInt(pj.contract_total),
         budgets,
@@ -486,7 +803,7 @@ export async function getDashboardOverview(
       for (const cat of COST_CATEGORY_LIST) {
         actualExclSum += costs.excl[cat];
         actualInclSum += costs.incl[cat];
-        const evalCat = ts.cost_tax_mode === 'TAX_EXCLUDED' ? costs.excl[cat] : costs.incl[cat];
+        const evalCat = costTaxMode === 'TAX_EXCLUDED' ? costs.excl[cat] : costs.incl[cat];
         if (evalCat > budgets[cat]) {
           overCats.push(COST_CATEGORY_LABELS[cat]);
         }
@@ -527,31 +844,20 @@ export async function getDashboardOverview(
     overBudgetProjects = overList.slice(0, 10);
   }
 
-  // 6. 要対応アラート群
   let unapprovedAlert: DashboardOverviewDto['alerts']['unapprovedAlert'] = null;
-  if (ts.approval_flow_enabled && (salesEnabled || enabledSet.has('fixedbill'))) {
-    const [shAppr, subAppr] = await Promise.all([
-      tx.query<{ pending_cnt: string; rejected_cnt: string }>(
-        `SELECT COUNT(*) FILTER (WHERE approval_status = 0 AND status IN ('K1','K2','K3'))::text AS pending_cnt,
-                COUNT(*) FILTER (WHERE approval_status = 2 AND status IN ('K1','K2','K3'))::text AS rejected_cnt
-           FROM sales_headers
-          WHERE tenant_id = $1::uuid`,
-        [tenantId],
-      ),
-      enabledSet.has('fixedbill')
-        ? tx.query<{ pending_cnt: string; rejected_cnt: string }>(
-            `SELECT COUNT(*) FILTER (WHERE flow_status = 0)::text AS pending_cnt,
-                    COUNT(*) FILTER (WHERE flow_status = 2)::text AS rejected_cnt
-               FROM subscription_approval_flows
-              WHERE tenant_id = $1::uuid`,
-            [tenantId],
-          )
-        : Promise.resolve([{ pending_cnt: '0', rejected_cnt: '0' }]),
-    ]);
-    const sPending = Number(shAppr[0]?.pending_cnt ?? '0');
-    const sRej = Number(shAppr[0]?.rejected_cnt ?? '0');
-    const fPending = Number(subAppr[0]?.pending_cnt ?? '0');
-    const fRej = Number(subAppr[0]?.rejected_cnt ?? '0');
+  if (dbRow.approval_flow_enabled && (salesEnabled || enabledSet.has('fixedbill'))) {
+    const sh =
+      dbRow.sales_appr_json !== null
+        ? parseJsonValue<{ pending_cnt: string; rejected_cnt: string }>(dbRow.sales_appr_json)
+        : null;
+    const sub =
+      dbRow.sub_appr_json !== null
+        ? parseJsonValue<{ pending_cnt: string; rejected_cnt: string }>(dbRow.sub_appr_json)
+        : null;
+    const sPending = Number(sh !== null ? sh.pending_cnt : '0');
+    const sRej = Number(sh !== null ? sh.rejected_cnt : '0');
+    const fPending = Number(sub !== null ? sub.pending_cnt : '0');
+    const fRej = Number(sub !== null ? sub.rejected_cnt : '0');
     unapprovedAlert = {
       salesPendingCount: sPending,
       salesRejectedCount: sRej,
@@ -562,84 +868,53 @@ export async function getDashboardOverview(
   }
 
   let unbilledSalesAlert: DashboardOverviewDto['alerts']['unbilledSalesAlert'] = null;
-  if (hasAny('sales', 'tatekae', 'billsummary')) {
-    const rows = await tx.query<{ cnt: string; amt: string }>(
-      `SELECT COUNT(*)::text AS cnt,
-              COALESCE(SUM(total_amount), 0)::text AS amt
-         FROM sales_headers
-        WHERE tenant_id = $1::uuid
-          AND status IN ('K1', 'K2', 'K3')`,
-      [tenantId],
-    );
+  if (hasAny('sales', 'tatekae', 'billsummary') && dbRow.unbilled_sales_json !== null) {
+    const ur = parseJsonValue<{ cnt: string; amt: string }>(dbRow.unbilled_sales_json);
     unbilledSalesAlert = {
-      count: Number(rows[0]?.cnt ?? '0'),
-      totalAmount: Number(rows[0]?.amt ?? '0'),
+      count: Number(ur.cnt),
+      totalAmount: Number(ur.amt),
     };
   }
 
   let unpaidBillingAlert: DashboardOverviewDto['alerts']['unpaidBillingAlert'] = null;
-  if (hasAny('receivable', 'deposit', 'billissue')) {
-    const rows = await tx.query<{ cnt: string; amt: string; overdue_cnt: string }>(
-      `SELECT COUNT(*)::text AS cnt,
-              COALESCE(SUM(billing_amount), 0)::text AS amt,
-              COUNT(*) FILTER (WHERE payment_due_date IS NOT NULL AND payment_due_date < CURRENT_DATE)::text AS overdue_cnt
-         FROM billing_headers
-        WHERE tenant_id = $1::uuid
-          AND status IN ('N1', 'N2')`,
-      [tenantId],
+  if (hasAny('receivable', 'deposit', 'billissue') && dbRow.unpaid_billings_json !== null) {
+    const ubr = parseJsonValue<{ cnt: string; amt: string; overdue_cnt: string }>(
+      dbRow.unpaid_billings_json,
     );
     unpaidBillingAlert = {
-      count: Number(rows[0]?.cnt ?? '0'),
-      billingAmountTotal: Number(rows[0]?.amt ?? '0'),
-      overdueCount: Number(rows[0]?.overdue_cnt ?? '0'),
+      count: Number(ubr.cnt),
+      billingAmountTotal: Number(ubr.amt),
+      overdueCount: Number(ubr.overdue_cnt),
     };
   }
 
   let aplusFailureAlert: DashboardOverviewDto['alerts']['aplusFailureAlert'] = null;
-  if (aplusEnabled) {
-    const rows = await tx.query<{ cnt: string; unpaid: string }>(
-      `SELECT COUNT(*)::text AS cnt,
-              COALESCE(SUM(unpaid_amount), 0)::text AS unpaid
-         FROM aplus_imports
-        WHERE tenant_id = $1::uuid
-          AND (result_code <> '0' OR unpaid_amount > 0)`,
-      [tenantId],
-    );
+  if (aplusEnabled && dbRow.aplus_fail_json !== null) {
+    const afr = parseJsonValue<{ cnt: string; unpaid: string }>(dbRow.aplus_fail_json);
     aplusFailureAlert = {
-      count: Number(rows[0]?.cnt ?? '0'),
-      unpaidAmountTotal: Number(rows[0]?.unpaid ?? '0'),
+      count: Number(afr.cnt),
+      unpaidAmountTotal: Number(afr.unpaid),
     };
   }
 
   let purchasingPayableAlert: DashboardOverviewDto['alerts']['purchasingPayableAlert'] = null;
   if (apEnabled) {
-    const [purRows, payRows] = await Promise.all([
-      tx.query<{ cnt: string; amt: string }>(
-        `SELECT COUNT(*)::text AS cnt,
-                COALESCE(SUM(total_amount), 0)::text AS amt
-           FROM purchases
-          WHERE tenant_id = $1::uuid
-            AND status IN ('P1', 'P2')`,
-        [tenantId],
-      ),
-      tx.query<{ cnt: string; amt: string }>(
-        `SELECT COUNT(*)::text AS cnt,
-                COALESCE(SUM(payable_amount), 0)::text AS amt
-           FROM payable_ledgers
-          WHERE tenant_id = $1::uuid
-            AND status = 'A1'`,
-        [tenantId],
-      ),
-    ]);
+    const pur =
+      dbRow.unconfirmed_purchases_json !== null
+        ? parseJsonValue<{ cnt: string; amt: string }>(dbRow.unconfirmed_purchases_json)
+        : null;
+    const pay =
+      dbRow.unpaid_payables_json !== null
+        ? parseJsonValue<{ cnt: string; amt: string }>(dbRow.unpaid_payables_json)
+        : null;
     purchasingPayableAlert = {
-      unconfirmedPurchaseCount: Number(purRows[0]?.cnt ?? '0'),
-      unconfirmedPurchaseAmount: Number(purRows[0]?.amt ?? '0'),
-      unpaidPayableCount: Number(payRows[0]?.cnt ?? '0'),
-      unpaidPayableAmount: Number(payRows[0]?.amt ?? '0'),
+      unconfirmedPurchaseCount: Number(pur !== null ? pur.cnt : '0'),
+      unconfirmedPurchaseAmount: Number(pur !== null ? pur.amt : '0'),
+      unpaidPayableCount: Number(pay !== null ? pay.cnt : '0'),
+      unpaidPayableAmount: Number(pay !== null ? pay.amt : '0'),
     };
   }
 
-  // 7. 社内チャット新着サマリ（teams 有効時のみ）
   let chatSummary: DashboardOverviewDto['chatSummary'] = null;
   if (teamsEnabled) {
     const chatPage = await listChatThreads(tx, tenantId, {});
@@ -650,190 +925,112 @@ export async function getDashboardOverview(
     };
   }
 
-  // 8. 最近の業務アクティビティ（有効モジュールのみ）
-  const activityQueries: Promise<DashboardActivityItem[]>[] = [];
+  const allActivities: DashboardActivityItem[] = [];
   if (enabledSet.has('estimate')) {
-    activityQueries.push(
-      tx
-        .query<{
-          id: string;
-          no: string;
-          title: string;
-          dt: string;
-          amt: string;
-          st: string;
-        }>(
-          `SELECT id, quotation_no::text AS no, quotation_name AS title,
-                  quotation_date::text AS dt, total_amount::text AS amt, status::text AS st
-             FROM quotations
-            WHERE tenant_id = $1::uuid
-            ORDER BY updated_at DESC
-            LIMIT 4`,
-          [tenantId],
-        )
-        .then((rows) =>
-          rows.map((r) => ({
-            kind: 'ESTIMATE' as const,
-            kindLabel: '見積',
-            docNo: r.no,
-            title: r.title,
-            date: r.dt.slice(0, 10),
-            amount: Number(r.amt),
-            status: r.st,
-            href: `/estimates/${r.id}`,
-          })),
-        ),
-    );
+    const rows = parseJsonValue<
+      Array<{ id: string; no: string; title: string; dt: string; amt: string; st: string }>
+    >(dbRow.recent_estimates_json);
+    for (const r of rows) {
+      allActivities.push({
+        kind: 'ESTIMATE',
+        kindLabel: '見積',
+        docNo: r.no,
+        title: r.title,
+        date: r.dt.slice(0, 10),
+        amount: Number(r.amt),
+        status: r.st,
+        href: `/estimates/${r.id}`,
+      });
+    }
   }
   if (salesEnabled) {
-    activityQueries.push(
-      tx
-        .query<{
-          id: string;
-          entry_type: 'SALE' | 'ADVANCE';
-          no: string;
-          title: string;
-          dt: string;
-          amt: string;
-          st: string;
-        }>(
-          `SELECT id, entry_type::text AS entry_type, slip_no::text AS no, slip_name AS title,
-                  slip_date::text AS dt, total_amount::text AS amt, status::text AS st
-             FROM sales_headers
-            WHERE tenant_id = $1::uuid
-            ORDER BY updated_at DESC
-            LIMIT 4`,
-          [tenantId],
-        )
-        .then((rows) =>
-          rows.map((r) => ({
-            kind: 'SALE' as const,
-            kindLabel: r.entry_type === 'ADVANCE' ? '立替金' : '売上',
-            docNo: r.no,
-            title: r.title,
-            date: r.dt.slice(0, 10),
-            amount: Number(r.amt),
-            status: r.st,
-            href: `/sales/${r.id}`,
-          })),
-        ),
-    );
+    const rows = parseJsonValue<
+      Array<{
+        id: string;
+        entry_type: 'SALE' | 'ADVANCE';
+        no: string;
+        title: string;
+        dt: string;
+        amt: string;
+        st: string;
+      }>
+    >(dbRow.recent_sales_json);
+    for (const r of rows) {
+      allActivities.push({
+        kind: 'SALE',
+        kindLabel: r.entry_type === 'ADVANCE' ? '立替金' : '売上',
+        docNo: r.no,
+        title: r.title,
+        date: r.dt.slice(0, 10),
+        amount: Number(r.amt),
+        status: r.st,
+        href: `/sales/${r.id}`,
+      });
+    }
   }
   if (billingEnabled) {
-    activityQueries.push(
-      tx
-        .query<{
-          id: string;
-          no: string;
-          partner_name: string;
-          dt: string;
-          amt: string;
-          st: string;
-        }>(
-          `SELECT bh.id, bh.billing_no::text AS no, COALESCE(bp.partner_name, '') AS partner_name,
-                  bh.billing_date::text AS dt, bh.billing_amount::text AS amt, bh.status::text AS st
-             FROM billing_headers bh
-             LEFT JOIN business_partners bp
-               ON bp.tenant_id = bh.tenant_id AND bp.id = bh.partner_id
-            WHERE bh.tenant_id = $1::uuid
-            ORDER BY bh.updated_at DESC
-            LIMIT 4`,
-          [tenantId],
-        )
-        .then((rows) =>
-          rows.map((r) => ({
-            kind: 'BILLING' as const,
-            kindLabel: '請求確定',
-            docNo: r.no,
-            title: `${r.partner_name} 請求書`,
-            date: r.dt.slice(0, 10),
-            amount: Number(r.amt),
-            status: r.st,
-            href: `/billing/${r.id}`,
-          })),
-        ),
-    );
+    const rows = parseJsonValue<
+      Array<{ id: string; no: string; partner_name: string; dt: string; amt: string; st: string }>
+    >(dbRow.recent_billings_json);
+    for (const r of rows) {
+      allActivities.push({
+        kind: 'BILLING',
+        kindLabel: '請求確定',
+        docNo: r.no,
+        title: `${r.partner_name} 請求書`,
+        date: r.dt.slice(0, 10),
+        amount: Number(r.amt),
+        status: r.st,
+        href: `/billing/${r.id}`,
+      });
+    }
   }
   if (projectEnabled) {
-    activityQueries.push(
-      tx
-        .query<{
-          id: string;
-          no: string;
-          title: string;
-          dt: string;
-          amt: string;
-          st: string;
-        }>(
-          `SELECT id, project_no::text AS no, project_name AS title,
-                  project_date::text AS dt, contract_total::text AS amt, status::text AS st
-             FROM projects
-            WHERE tenant_id = $1::uuid
-            ORDER BY updated_at DESC
-            LIMIT 4`,
-          [tenantId],
-        )
-        .then((rows) =>
-          rows.map((r) => ({
-            kind: 'PROJECT' as const,
-            kindLabel: '案件',
-            docNo: r.no,
-            title: r.title,
-            date: r.dt.slice(0, 10),
-            amount: Number(r.amt),
-            status: r.st,
-            href: `/projects/${r.id}`,
-          })),
-        ),
-    );
+    const rows = parseJsonValue<
+      Array<{ id: string; no: string; title: string; dt: string; amt: string; st: string }>
+    >(dbRow.recent_projects_json);
+    for (const r of rows) {
+      allActivities.push({
+        kind: 'PROJECT',
+        kindLabel: '案件',
+        docNo: r.no,
+        title: r.title,
+        date: r.dt.slice(0, 10),
+        amount: Number(r.amt),
+        status: r.st,
+        href: `/projects/${r.id}`,
+      });
+    }
   }
   if (enabledSet.has('purchase')) {
-    activityQueries.push(
-      tx
-        .query<{
-          id: string;
-          no: string;
-          title: string;
-          dt: string;
-          amt: string;
-          st: string;
-        }>(
-          `SELECT id, purchase_no::text AS no, purchase_name AS title,
-                  purchase_date::text AS dt, total_amount::text AS amt, status::text AS st
-             FROM purchases
-            WHERE tenant_id = $1::uuid
-            ORDER BY updated_at DESC
-            LIMIT 4`,
-          [tenantId],
-        )
-        .then((rows) =>
-          rows.map((r) => ({
-            kind: 'PURCHASE' as const,
-            kindLabel: '仕入',
-            docNo: r.no,
-            title: r.title,
-            date: r.dt.slice(0, 10),
-            amount: Number(r.amt),
-            status: r.st,
-            href: '/purchasing?tab=PURCHASES',
-          })),
-        ),
-    );
+    const rows = parseJsonValue<
+      Array<{ id: string; no: string; title: string; dt: string; amt: string; st: string }>
+    >(dbRow.recent_purchases_json);
+    for (const r of rows) {
+      allActivities.push({
+        kind: 'PURCHASE',
+        kindLabel: '仕入',
+        docNo: r.no,
+        title: r.title,
+        date: r.dt.slice(0, 10),
+        amount: Number(r.amt),
+        status: r.st,
+        href: '/purchasing?tab=PURCHASES',
+      });
+    }
   }
 
-  const activityGroups = await Promise.all(activityQueries);
-  const recentActivities = activityGroups
-    .flat()
+  const recentActivities = allActivities
     .sort((a, b) => b.date.localeCompare(a.date))
     .slice(0, 8);
 
   return {
-    companyName: ts.company_name,
-    openingBalanceDate: ts.opening_balance_date.slice(0, 10),
-    costTaxMode: ts.cost_tax_mode,
-    taxCalcPolicy: ts.tax_calc_policy,
-    defaultRoundingMode: ts.default_rounding_mode,
-    approvalFlowEnabled: ts.approval_flow_enabled,
+    companyName: dbRow.company_name,
+    openingBalanceDate: dbRow.opening_balance_date.slice(0, 10),
+    costTaxMode: dbRow.cost_tax_mode,
+    taxCalcPolicy: dbRow.tax_calc_policy,
+    defaultRoundingMode: dbRow.default_rounding_mode,
+    approvalFlowEnabled: dbRow.approval_flow_enabled,
     targetMonth,
     periodStart,
     periodEnd,

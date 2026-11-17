@@ -35,7 +35,7 @@ import {
   renderBillingListPdf,
   renderBillingSimpleListPdf,
 } from '@/lib/domain/pdf-renderer';
-import { getEstimateEditorLookups } from '@/lib/estimates/estimates-service';
+import { getConsolidatedBaseLookups } from '@/lib/estimates/estimates-service';
 import type { QuotationTemplateVariant, SnapshotHistoryItemDto } from '@/lib/estimates/types';
 import { isFeatureEnabled, requireFeature } from '@/lib/feature-flags/gate';
 import { mapPgConstraintError, MasterDataError } from '@/lib/masters/error-mapper';
@@ -161,46 +161,22 @@ export async function getBillingLookups(
   tx: DbExecutor,
   tenantId: string,
 ): Promise<BillingLookupsDto> {
-  const [baseLookups, settingsRows, closingRows, billsummaryEnabled, billissueEnabled, fixedbillEnabled] =
-    await Promise.all([
-      getEstimateEditorLookups(tx, tenantId),
-      tx.query<{
-        opening_balance_date: string;
-        approval_flow_enabled: boolean;
-        allow_billing_date_warning_skip: boolean;
-        show_invoice_carryover: boolean;
-      }>(
-        `SELECT opening_balance_date::text AS opening_balance_date,
-                approval_flow_enabled,
-                allow_billing_date_warning_skip,
-                show_invoice_carryover
-           FROM tenant_settings
-          WHERE tenant_id = $1::uuid
-          LIMIT 1`,
-        [tenantId],
-      ),
-      tx.query<{ code: string; name: string }>(
-        `SELECT code, name
-           FROM code_masters
-          WHERE domain_key = 'BILL_CLOSE' AND is_active = true
-          ORDER BY display_order ASC, code ASC`,
-        [],
-      ),
-      isFeatureEnabled(tx, tenantId, 'billsummary'),
-      isFeatureEnabled(tx, tenantId, 'billissue'),
-      isFeatureEnabled(tx, tenantId, 'fixedbill'),
-    ]);
-
-  const settings = settingsRows[0];
-  if (settings === undefined) {
-    throw new MasterDataError(404, 'TENANT_SETTINGS_NOT_FOUND', '自社設定が見つかりません。');
-  }
+  const baseLookups = await getConsolidatedBaseLookups(tx, tenantId, {
+    includeCatalog: false,
+    includeClosingDays: true,
+    includePaymentMethods: false,
+  });
+  const [billsummaryEnabled, billissueEnabled, fixedbillEnabled] = await Promise.all([
+    isFeatureEnabled(tx, tenantId, 'billsummary'),
+    isFeatureEnabled(tx, tenantId, 'billissue'),
+    isFeatureEnabled(tx, tenantId, 'fixedbill'),
+  ]);
 
   return {
-    openingBalanceDate: settings.opening_balance_date.slice(0, 10),
-    approvalFlowEnabled: settings.approval_flow_enabled,
-    allowBillingDateWarningSkip: settings.allow_billing_date_warning_skip,
-    showInvoiceCarryover: settings.show_invoice_carryover,
+    openingBalanceDate: baseLookups.openingBalanceDate,
+    approvalFlowEnabled: baseLookups.approvalFlowEnabled,
+    allowBillingDateWarningSkip: baseLookups.allowBillingDateWarningSkip,
+    showInvoiceCarryover: baseLookups.showInvoiceCarryover,
     taxCalcPolicy: baseLookups.taxCalcPolicy,
     defaultRoundingMode: baseLookups.defaultRoundingMode,
     quotationTemplateRows: baseLookups.quotationTemplateRows === 20 ? '20_ROWS' : '10_ROWS',
@@ -208,7 +184,7 @@ export async function getBillingLookups(
     billissueEnabled,
     fixedbillEnabled,
     partners: baseLookups.partners,
-    closingDays: closingRows,
+    closingDays: baseLookups.closingDays,
   };
 }
 

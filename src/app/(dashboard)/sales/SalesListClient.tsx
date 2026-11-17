@@ -987,9 +987,9 @@ export default function SalesListClient({
                               }
                               router.push(`/sales/${item.id}`);
                             }}
-                            className={`h-[52px] ${zebraClass} hover:bg-[#D6D6FF]/65 transition-colors cursor-pointer group`}
+                            className={`h-10 ${zebraClass} hover:bg-[#D6D6FF]/65 transition-colors cursor-pointer group`}
                           >
-                            <td className="h-[52px] px-1 text-center">
+                            <td className="h-10 px-1 text-center">
                               <input
                                 type="checkbox"
                                 disabled={isBilled}
@@ -998,7 +998,7 @@ export default function SalesListClient({
                                 className="cursor-pointer disabled:cursor-not-allowed accent-[#5252CC]"
                               />
                             </td>
-                            <td className="h-[52px] py-1 px-1 text-center font-mono font-black text-[#333399] whitespace-nowrap overflow-hidden">
+                            <td className="h-10 py-1 px-1 text-center font-mono font-black text-[#333399] whitespace-nowrap overflow-hidden">
                               <Link
                                 href={`/sales/${item.id}`}
                                 className="hover:text-[#5252CC] hover:underline"
@@ -1006,10 +1006,10 @@ export default function SalesListClient({
                                 #{item.slipNo}
                               </Link>
                             </td>
-                            <td className="h-[52px] py-1 px-1 text-center font-mono text-xs text-[#1F1F5C] whitespace-nowrap overflow-hidden">
+                            <td className="h-10 py-1 px-1 text-center font-mono text-xs text-[#1F1F5C] whitespace-nowrap overflow-hidden">
                               {item.slipDate.replace(/-/g, '/')}
                             </td>
-                            <td className="h-[52px] py-1 px-1 text-center whitespace-nowrap overflow-hidden">
+                            <td className="h-10 py-1 px-1 text-center whitespace-nowrap overflow-hidden">
                               <span
                                 className={`inline-flex px-1.5 py-0.5 rounded-full text-[11px] font-bold border ${
                                   isBilled
@@ -1024,7 +1024,7 @@ export default function SalesListClient({
                                 {SALES_STATUS_LABELS[item.status]}
                               </span>
                             </td>
-                            <td className="h-[52px] py-1 px-1 text-center whitespace-nowrap overflow-hidden">
+                            <td className="h-10 py-1 px-1 text-center whitespace-nowrap overflow-hidden">
                               <span
                                 className={`inline-flex px-1.5 py-0.5 rounded-full text-[11px] font-bold ${
                                   item.approvalStatus === 1
@@ -1037,52 +1037,48 @@ export default function SalesListClient({
                                 {APPROVAL_STATUS_LABELS[item.approvalStatus]}
                               </span>
                             </td>
-                            <td className="h-[52px] py-1 px-2 text-[#1F1F5C] overflow-hidden">
-                              <div className="flex flex-col justify-center h-[44px] overflow-hidden">
+                            <td className="h-10 py-1 px-2 text-[#1F1F5C] overflow-hidden">
+                              <div className="flex flex-col justify-center h-8 overflow-hidden">
                                 <div
                                   title={item.partnerName}
-                                  className="font-bold text-xs leading-5 h-5 truncate w-full shrink-0"
+                                  className="font-bold text-xs leading-4 h-4 truncate w-full shrink-0"
                                 >
                                   {item.partnerName}
                                 </div>
-                                <div className="text-[10px] leading-4 h-4 font-mono text-[#666699] truncate shrink-0">
+                                <div className="mt-0.5 text-[10px] leading-3.5 h-3.5 font-mono text-[#7575A3] truncate shrink-0">
                                   {item.partnerCode}
                                 </div>
                               </div>
                             </td>
-                            <td className="h-[52px] py-1 px-2.5 text-[#1F1F5C] overflow-hidden">
-                              <div className="flex flex-col justify-center h-[44px] overflow-hidden">
+                            <td className="h-10 py-1 px-2.5 text-[#1F1F5C] overflow-hidden">
+                              <div className="flex flex-col justify-center h-8 overflow-hidden">
                                 <Link
                                   href={`/sales/${item.id}`}
                                   title={item.slipName !== '' ? item.slipName : '（件名なし）'}
-                                  className="font-bold text-xs leading-5 h-5 text-[#1F1F5C] group-hover:text-[#5252CC] hover:underline block truncate w-full shrink-0"
+                                  className="font-bold text-xs leading-4 h-4 text-[#1F1F5C] group-hover:text-[#5252CC] hover:underline block truncate w-full shrink-0"
                                 >
                                   {item.slipName !== '' ? item.slipName : '（件名なし）'}
                                 </Link>
                                 {item.projectName !== null && (
-                                  <div className="mt-0.5 h-[22px] flex items-center max-w-full shrink-0">
-                                    <span
-                                      title={`工事 #${item.projectNo}: ${item.projectName}`}
-                                      className="inline-flex max-w-full h-5 items-center px-2 rounded-full text-[10px] leading-none font-bold bg-[#E6E6FF] text-[#333399] border border-[#9999FF]"
-                                    >
-                                      <span className="truncate">
-                                        工事 #{item.projectNo}: {item.projectName}
-                                      </span>
-                                    </span>
+                                  <div
+                                    title={`工事 #${item.projectNo}: ${item.projectName}`}
+                                    className="mt-0.5 text-[10px] leading-3.5 h-3.5 font-normal text-[#7575A3] truncate w-full shrink-0"
+                                  >
+                                    工事 #{item.projectNo}: {item.projectName}
                                   </div>
                                 )}
                               </div>
                             </td>
-                            <td className="h-[52px] py-1 px-1.5 text-right font-mono tabular-nums text-xs text-[#333366] whitespace-nowrap overflow-hidden">
+                            <td className="h-10 py-1 px-1.5 text-right font-mono tabular-nums text-xs text-[#333366] whitespace-nowrap overflow-hidden">
                               {formatAmount(item.subtotalAmount)}
                             </td>
-                            <td className="h-[52px] py-1 px-1.5 text-right font-mono tabular-nums text-xs text-[#4D4DB3] whitespace-nowrap overflow-hidden">
+                            <td className="h-10 py-1 px-1.5 text-right font-mono tabular-nums text-xs text-[#4D4DB3] whitespace-nowrap overflow-hidden">
                               {formatAmount(item.taxTotal)}
                             </td>
-                            <td className="h-[52px] py-1 px-1.5 text-right font-mono tabular-nums text-xs font-black text-[#19194D] whitespace-nowrap overflow-hidden">
+                            <td className="h-10 py-1 px-1.5 text-right font-mono tabular-nums text-xs font-black text-[#19194D] whitespace-nowrap overflow-hidden">
                               {formatAmount(item.totalAmount)}
                             </td>
-                            <td className="h-[52px] py-1 px-1 text-center whitespace-nowrap">
+                            <td className="h-10 py-1 px-1 text-center whitespace-nowrap">
                               <button
                                 type="button"
                                 disabled={!canDelete || busy}

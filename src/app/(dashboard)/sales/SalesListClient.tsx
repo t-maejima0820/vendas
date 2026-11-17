@@ -54,7 +54,7 @@ const PROJECT_LINK_OPTIONS: ReadonlyArray<{
 ];
 
 function formatYen(amount: number): string {
-  return `¥${amount.toLocaleString('ja-JP')}`;
+  return amount.toLocaleString('ja-JP');
 }
 
 function formatQty(qty: number): string {
@@ -1242,17 +1242,14 @@ export default function SalesListClient({
                         <th className="h-9 py-1 px-3 text-right whitespace-nowrap">
                           💰 税込合計
                         </th>
-                        <th className="h-9 py-1 px-2.5 text-center whitespace-nowrap">
-                          📄 納/受
-                        </th>
-                        <th className="h-9 py-1 px-3 text-right whitespace-nowrap">⚙️ 操作</th>
+                        <th className="h-9 py-1 px-2.5 w-12 text-center whitespace-nowrap">🗑️</th>
                       </tr>
                     </thead>
 
                     <tbody className="divide-y divide-[#D6D6FF] font-sans">
                       {displayedItems.length === 0 ? (
                         <tr>
-                          <td colSpan={12} className="px-6 py-16 text-center bg-white">
+                          <td colSpan={11} className="px-6 py-16 text-center bg-white">
                             <div className="flex flex-col items-center justify-center gap-2.5">
                               <span className="text-3xl">🧾</span>
                               <p className="text-sm font-black text-[#1F1F5C]">
@@ -1350,20 +1347,17 @@ export default function SalesListClient({
                                 <td className="h-9 py-1 px-3 text-[#1F1F5C]">
                                   <Link
                                     href={`/sales/${item.id}`}
-                                    className="font-bold text-xs text-[#1F1F5C] group-hover:text-[#5252CC] hover:underline block truncate max-w-[260px]"
+                                    className="font-bold text-xs text-[#1F1F5C] group-hover:text-[#5252CC] hover:underline block truncate max-w-[280px]"
                                   >
                                     {item.slipName !== '' ? item.slipName : '（件名なし）'}
                                   </Link>
-                                  <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
-                                    {item.projectName !== null && (
+                                  {item.projectName !== null && (
+                                    <div className="mt-0.5">
                                       <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#E6E6FF] text-[#333399] border border-[#9999FF]">
                                         工事 #{item.projectNo}: {item.projectName}
                                       </span>
-                                    )}
-                                    <span className="text-[10px] font-mono text-[#666699]">
-                                      明細 {item.lineCount}行
-                                    </span>
-                                  </div>
+                                    </div>
+                                  )}
                                 </td>
                                 <td className="h-9 py-1 px-3 text-right font-mono tabular-nums text-xs text-[#333366] whitespace-nowrap">
                                   {formatYen(item.subtotalAmount)}
@@ -1374,49 +1368,54 @@ export default function SalesListClient({
                                 <td className="h-9 py-1 px-3 text-right font-mono tabular-nums text-xs font-black text-[#19194D] whitespace-nowrap">
                                   {formatYen(item.totalAmount)}
                                 </td>
-                                <td className="h-9 py-1 px-2.5 text-center whitespace-nowrap text-[11px] font-mono">
-                                  <span className="text-[#333399]">
-                                    納:
-                                    {item.latestDeliveryNoteVersion !== null
-                                      ? `v${item.latestDeliveryNoteVersion}`
-                                      : '-'}
-                                  </span>
-                                  <span className="mx-1 text-[#B3B3FF]">/</span>
-                                  <span className="text-[#333399]">
-                                    受:
-                                    {item.latestDeliveryReceiptVersion !== null
-                                      ? `v${item.latestDeliveryReceiptVersion}`
-                                      : '-'}
-                                  </span>
-                                </td>
-                                <td className="h-9 py-1 px-3 text-right whitespace-nowrap">
-                                  <div className="inline-flex items-center gap-1">
-                                    <Link
-                                      href={`/sales/${item.id}`}
-                                      className="h-6 px-2.5 rounded-md border border-[#9999FF] bg-white hover:bg-[#CCCCFF] text-[11px] font-bold text-[#333399] inline-flex items-center transition"
-                                    >
-                                      {isBilled ? '閲覧' : '開く'}
-                                    </Link>
-                                    {!isBilled &&
+                                <td className="h-9 py-1 px-2.5 text-center whitespace-nowrap">
+                                  {(() => {
+                                    const canDelete =
+                                      !isBilled &&
                                       item.deliveryNoteCount === 0 &&
-                                      item.deliveryReceiptCount === 0 && (
-                                        <button
-                                          type="button"
-                                          disabled={busy}
-                                          onClick={() => void handleDelete(item)}
-                                          title="伝票を削除"
-                                          className="h-6 px-2 rounded-md border border-[#FCA5A5] bg-white hover:bg-[#FEE2E2] text-[11px] font-bold text-[#C00000] cursor-pointer transition"
+                                      item.deliveryReceiptCount === 0;
+                                    return (
+                                      <button
+                                        type="button"
+                                        disabled={!canDelete || busy}
+                                        onClick={() => void handleDelete(item)}
+                                        title={
+                                          canDelete
+                                            ? '伝票を削除'
+                                            : '請求済みまたは納品書・受領書発行済みのため削除できません'
+                                        }
+                                        aria-label="伝票を削除"
+                                        className={`h-7 w-7 rounded-md flex items-center justify-center transition mx-auto ${
+                                          canDelete
+                                            ? 'text-[#666699] hover:text-[#C00000] hover:bg-[#FEE2E2] border border-transparent hover:border-[#FCA5A5] cursor-pointer'
+                                            : 'text-[#CCCCFF] cursor-not-allowed opacity-50'
+                                        }`}
+                                      >
+                                        <svg
+                                          viewBox="0 0 24 24"
+                                          fill="none"
+                                          stroke="currentColor"
+                                          strokeWidth="2"
+                                          strokeLinecap="round"
+                                          strokeLinejoin="round"
+                                          className="w-3.5 h-3.5"
+                                          aria-hidden="true"
                                         >
-                                          削除
-                                        </button>
-                                      )}
-                                  </div>
+                                          <path d="M3 6h18" />
+                                          <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+                                          <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+                                          <line x1="10" x2="10" y1="11" y2="17" />
+                                          <line x1="14" x2="14" y1="11" y2="17" />
+                                        </svg>
+                                      </button>
+                                    );
+                                  })()}
                                 </td>
                               </tr>
                             );
                           })}
                           <tr aria-hidden="true" className="h-full">
-                            <td colSpan={12} className="p-0 border-0" />
+                            <td colSpan={11} className="p-0 border-0" />
                           </tr>
                         </>
                       )}
@@ -1441,8 +1440,8 @@ export default function SalesListClient({
                         <td className="h-9 py-1 px-3 text-right font-mono tabular-nums font-black whitespace-nowrap text-[#19194D]">
                           {formatYen(displayedTotals.total)}
                         </td>
-                        <td colSpan={2} className="h-9 py-1 px-3 text-right font-mono text-[10px] text-[#333399]">
-                          VENDAS LEDGER
+                        <td className="h-9 py-1 px-2.5 text-center font-mono text-[10px] text-[#333399]">
+                          Total
                         </td>
                       </tr>
                     </tfoot>

@@ -14,13 +14,13 @@ export default async function DashboardHomePage({
     redirect('/estimates');
   }
   if (featureParam === 'sales') {
-    redirect('/sales?tab=SALE');
+    redirect('/sales');
   }
   if (featureParam === 'tatekae') {
-    redirect('/sales?tab=ADVANCE');
+    redirect('/tatekae');
   }
   if (featureParam === 'custom-sum-item') {
-    redirect('/sales?tab=SUMMARY');
+    redirect('/sales-summary');
   }
   if (featureParam === 'fixedbill') {
     redirect('/subscriptions');

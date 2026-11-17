@@ -182,17 +182,17 @@ export default function DashboardShell({
                     href = '/estimates';
                     isSelected = activePathname.startsWith('/estimates');
                   } else if (feat.featureCode === 'sales') {
-                    href = '/sales?tab=SALE';
-                    isSelected =
-                      activePathname.startsWith('/sales') &&
-                      salesTab !== 'ADVANCE' &&
-                      salesTab !== 'SUMMARY';
+                    href = '/sales';
+                    isSelected = activePathname === '/sales' || activePathname.startsWith('/sales/');
                   } else if (feat.featureCode === 'tatekae') {
-                    href = '/sales?tab=ADVANCE';
-                    isSelected = activePathname.startsWith('/sales') && salesTab === 'ADVANCE';
+                    href = '/tatekae';
+                    isSelected =
+                      activePathname === '/tatekae' || activePathname.startsWith('/tatekae/');
                   } else if (feat.featureCode === 'custom-sum-item') {
-                    href = '/sales?tab=SUMMARY';
-                    isSelected = activePathname.startsWith('/sales') && salesTab === 'SUMMARY';
+                    href = '/sales-summary';
+                    isSelected =
+                      activePathname === '/sales-summary' ||
+                      activePathname.startsWith('/sales-summary/');
                   } else if (feat.featureCode === 'fixedbill') {
                     href = '/subscriptions';
                     isSelected = activePathname.startsWith('/subscriptions');

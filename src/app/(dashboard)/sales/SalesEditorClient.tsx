@@ -458,7 +458,7 @@ export default function SalesEditorClient({
       setBannerError(res.error);
       return;
     }
-    router.push(`/sales?tab=${entryType}`);
+    router.push(entryType === 'ADVANCE' ? '/tatekae' : '/sales');
     router.refresh();
   }
 
@@ -496,7 +496,7 @@ export default function SalesEditorClient({
     setPreviewSnapshotId(created.id);
   }
 
-  const backHref = `/sales?tab=${entryType}`;
+  const backHref = entryType === 'ADVANCE' ? '/tatekae' : '/sales';
   const totalSnapshots = deliveryNotes.length + deliveryReceipts.length;
 
   return (
@@ -506,7 +506,7 @@ export default function SalesEditorClient({
         <div>
           <div className="flex items-center gap-2 text-xs text-slate-500 mb-1">
             <Link href={backHref} className="hover:text-blue-600 hover:underline">
-              売上・立替一覧
+              {entryType === 'ADVANCE' ? '立替金伝票一覧' : '売上伝票一覧'}
             </Link>
             <span>/</span>
             <span>

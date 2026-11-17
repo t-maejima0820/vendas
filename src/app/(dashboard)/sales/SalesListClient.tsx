@@ -561,24 +561,24 @@ export default function SalesListClient({
   ).length;
 
   return (
-    <div className="-m-6 min-h-[calc(100vh-3.5rem)] lg:h-[calc(100vh-3.5rem)] flex flex-col bg-[#F0F3F9] text-[#242852] antialiased lg:overflow-hidden select-none">
+    <div className="-m-6 min-h-[calc(100vh-3.5rem)] lg:h-[calc(100vh-3.5rem)] flex flex-col bg-[#F0F0FF] text-[#1F1F5C] antialiased lg:overflow-hidden select-none">
       {/* ========================================================= */}
-      {/* 画面トップバー（cabacc PageHeader スタイル × Access Vendas 色） */}
+      {/* 画面トップバー（cabacc PageHeader スタイル × #9999FF 基準濃淡） */}
       {/* ========================================================= */}
-      <header className="h-14 bg-white border-b-2 border-[#4A66AC] px-4 sm:px-6 flex items-center justify-between gap-3 shrink-0 shadow-2xs z-20">
+      <header className="h-14 bg-white border-b-2 border-[#9999FF] px-4 sm:px-6 flex items-center justify-between gap-3 shrink-0 shadow-2xs z-20">
         <div className="flex items-center gap-3 min-w-0">
           <div className="flex items-center gap-2 min-w-0">
-            <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-b from-[#4A66AC] to-[#242852] text-white text-sm shadow-2xs shrink-0">
+            <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-b from-[#9999FF] via-[#7878FF] to-[#333399] text-white text-sm shadow-2xs shrink-0">
               🧾
             </span>
-            <h1 className="text-base sm:text-lg font-black text-[#242852] tracking-tight truncate">
+            <h1 className="text-base sm:text-lg font-black text-[#1F1F5C] tracking-tight truncate">
               {activeTab === 'ADVANCE'
                 ? '立替金伝票一覧'
                 : activeTab === 'SUMMARY'
                   ? '商品別売上・立替集計'
                   : '売上伝票一覧'}
             </h1>
-            <span className="hidden xl:inline-flex items-center px-2.5 py-0.5 rounded-md text-[11px] font-bold bg-[#D4E5F6] text-[#242852] border border-[#90A2CF] shrink-0">
+            <span className="hidden xl:inline-flex items-center px-2.5 py-0.5 rounded-md text-[11px] font-bold bg-[#CCCCFF] text-[#1F1F5C] border border-[#9999FF] shrink-0">
               {activeTab === 'ADVANCE'
                 ? 'TATEKAE'
                 : activeTab === 'SUMMARY'
@@ -590,7 +590,7 @@ export default function SalesListClient({
           {/* 業務タブ切替ピル */}
           <nav
             aria-label="売上機能タブ"
-            className="hidden md:flex items-center gap-1 rounded-full bg-[#F0F3F9] p-1 border border-[#B5C1DF] ml-2"
+            className="hidden md:flex items-center gap-1 rounded-full bg-[#F0F0FF] p-1 border border-[#B3B3FF] ml-2"
           >
             {lookups.salesEnabled && (
               <button
@@ -598,8 +598,8 @@ export default function SalesListClient({
                 onClick={() => handleTabSwitch('SALE')}
                 className={`px-3.5 py-1 rounded-full text-xs font-bold transition cursor-pointer ${
                   activeTab === 'SALE'
-                    ? 'bg-gradient-to-b from-[#4A66AC] to-[#3B528A] text-white shadow-xs'
-                    : 'text-[#242852] hover:bg-[#D4E5F6]'
+                    ? 'bg-gradient-to-b from-[#7878FF] to-[#5252CC] text-white shadow-xs'
+                    : 'text-[#333399] hover:bg-[#D6D6FF]'
                 }`}
               >
                 売上伝票
@@ -611,8 +611,8 @@ export default function SalesListClient({
                 onClick={() => handleTabSwitch('ADVANCE')}
                 className={`px-3.5 py-1 rounded-full text-xs font-bold transition cursor-pointer ${
                   activeTab === 'ADVANCE'
-                    ? 'bg-gradient-to-b from-[#4A66AC] to-[#3B528A] text-white shadow-xs'
-                    : 'text-[#242852] hover:bg-[#D4E5F6]'
+                    ? 'bg-gradient-to-b from-[#7878FF] to-[#5252CC] text-white shadow-xs'
+                    : 'text-[#333399] hover:bg-[#D6D6FF]'
                 }`}
               >
                 立替金伝票
@@ -624,8 +624,8 @@ export default function SalesListClient({
                 onClick={() => handleTabSwitch('SUMMARY')}
                 className={`px-3.5 py-1 rounded-full text-xs font-bold transition cursor-pointer ${
                   activeTab === 'SUMMARY'
-                    ? 'bg-gradient-to-b from-[#4A66AC] to-[#3B528A] text-white shadow-xs'
-                    : 'text-[#242852] hover:bg-[#D4E5F6]'
+                    ? 'bg-gradient-to-b from-[#7878FF] to-[#5252CC] text-white shadow-xs'
+                    : 'text-[#333399] hover:bg-[#D6D6FF]'
                 }`}
               >
                 商品別売上・立替集計
@@ -640,7 +640,7 @@ export default function SalesListClient({
             <>
               <a
                 href={getSummaryExportUrl('csv')}
-                className="h-8 px-3.5 rounded-full bg-gradient-to-b from-white via-[#F0F3F9] to-[#D4E5F6] hover:to-[#B5C1DF] text-[#242852] border border-[#90A2CF] shadow-2xs text-xs font-bold inline-flex items-center gap-1 transition"
+                className="h-8 px-3.5 rounded-full bg-gradient-to-b from-white via-[#F0F0FF] to-[#CCCCFF] hover:to-[#B3B3FF] text-[#333399] border border-[#9999FF] shadow-2xs text-xs font-bold inline-flex items-center gap-1 transition"
               >
                 <span>集計CSV出力</span>
               </a>
@@ -648,7 +648,7 @@ export default function SalesListClient({
                 href={getSummaryExportUrl('pdf')}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="h-8 px-3.5 rounded-full bg-gradient-to-b from-white via-[#F0F3F9] to-[#D4E5F6] hover:to-[#B5C1DF] text-[#242852] border border-[#90A2CF] shadow-2xs text-xs font-bold inline-flex items-center gap-1 transition"
+                className="h-8 px-3.5 rounded-full bg-gradient-to-b from-white via-[#F0F0FF] to-[#CCCCFF] hover:to-[#B3B3FF] text-[#333399] border border-[#9999FF] shadow-2xs text-xs font-bold inline-flex items-center gap-1 transition"
               >
                 <span>商品別集計PDF</span>
               </a>
@@ -657,7 +657,7 @@ export default function SalesListClient({
             <>
               <a
                 href={getSalesExportUrl('csv')}
-                className="hidden sm:inline-flex h-8 px-3.5 rounded-full bg-gradient-to-b from-white via-[#F0F3F9] to-[#D4E5F6] hover:to-[#B5C1DF] text-[#242852] border border-[#90A2CF] shadow-2xs text-xs font-bold items-center gap-1 transition"
+                className="hidden sm:inline-flex h-8 px-3.5 rounded-full bg-gradient-to-b from-white via-[#F0F0FF] to-[#CCCCFF] hover:to-[#B3B3FF] text-[#333399] border border-[#9999FF] shadow-2xs text-xs font-bold items-center gap-1 transition"
               >
                 <span>CSV出力</span>
               </a>
@@ -665,16 +665,16 @@ export default function SalesListClient({
                 href={getSalesExportUrl('pdf')}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="hidden sm:inline-flex h-8 px-3.5 rounded-full bg-gradient-to-b from-white via-[#F0F3F9] to-[#D4E5F6] hover:to-[#B5C1DF] text-[#242852] border border-[#90A2CF] shadow-2xs text-xs font-bold items-center gap-1 transition"
+                className="hidden sm:inline-flex h-8 px-3.5 rounded-full bg-gradient-to-b from-white via-[#F0F0FF] to-[#CCCCFF] hover:to-[#B3B3FF] text-[#333399] border border-[#9999FF] shadow-2xs text-xs font-bold items-center gap-1 transition"
               >
                 <span>{activeTab === 'ADVANCE' ? '立替金一覧PDF' : '売上一覧PDF'}</span>
               </a>
               <Link
                 href={`/sales/new?entryType=${currentEntryType}`}
-                className="h-8 px-4 rounded-full bg-gradient-to-b from-[#4A66AC] to-[#3B528A] hover:from-[#5974B8] hover:to-[#3B528A] text-white border border-[#242852]/50 shadow-xs text-xs font-bold inline-flex items-center gap-1.5 transition transform hover:-translate-y-0.5 active:translate-y-px"
+                className="h-8 px-4 rounded-full bg-gradient-to-b from-[#7878FF] to-[#5252CC] hover:from-[#8C8CFF] hover:to-[#4747B3] text-white border border-[#333399]/60 shadow-xs text-xs font-bold inline-flex items-center gap-1.5 transition transform hover:-translate-y-0.5 active:translate-y-px"
               >
                 <span>＋ 新規{currentEntryType === 'ADVANCE' ? '立替金' : '売上'}発行</span>
-                <kbd className="hidden sm:inline-block px-1.5 py-0.5 text-[10px] bg-black/25 text-[#D4E5F6] rounded font-mono font-bold">
+                <kbd className="hidden sm:inline-block px-1.5 py-0.5 text-[10px] bg-black/25 text-[#E6E6FF] rounded font-mono font-bold">
                   F2
                 </kbd>
               </Link>
@@ -684,15 +684,15 @@ export default function SalesListClient({
       </header>
 
       {/* モバイル用タブ切替バー */}
-      <div className="md:hidden flex items-center gap-1.5 px-4 py-2 bg-white border-b border-[#B5C1DF] overflow-x-auto shrink-0">
+      <div className="md:hidden flex items-center gap-1.5 px-4 py-2 bg-white border-b border-[#B3B3FF] overflow-x-auto shrink-0">
         {lookups.salesEnabled && (
           <button
             type="button"
             onClick={() => handleTabSwitch('SALE')}
             className={`px-3 py-1 rounded-full text-xs font-bold shrink-0 cursor-pointer ${
               activeTab === 'SALE'
-                ? 'bg-[#4A66AC] text-white'
-                : 'bg-[#F0F3F9] text-[#242852]'
+                ? 'bg-[#7878FF] text-white'
+                : 'bg-[#F0F0FF] text-[#333399]'
             }`}
           >
             売上伝票
@@ -704,8 +704,8 @@ export default function SalesListClient({
             onClick={() => handleTabSwitch('ADVANCE')}
             className={`px-3 py-1 rounded-full text-xs font-bold shrink-0 cursor-pointer ${
               activeTab === 'ADVANCE'
-                ? 'bg-[#4A66AC] text-white'
-                : 'bg-[#F0F3F9] text-[#242852]'
+                ? 'bg-[#7878FF] text-white'
+                : 'bg-[#F0F0FF] text-[#333399]'
             }`}
           >
             立替金伝票
@@ -717,8 +717,8 @@ export default function SalesListClient({
             onClick={() => handleTabSwitch('SUMMARY')}
             className={`px-3 py-1 rounded-full text-xs font-bold shrink-0 cursor-pointer ${
               activeTab === 'SUMMARY'
-                ? 'bg-[#4A66AC] text-white'
-                : 'bg-[#F0F3F9] text-[#242852]'
+                ? 'bg-[#7878FF] text-white'
+                : 'bg-[#F0F0FF] text-[#333399]'
             }`}
           >
             商品別集計
@@ -758,101 +758,101 @@ export default function SalesListClient({
         {activeTab !== 'SUMMARY' ? (
           <>
             {/* ------------------------------------------------------- */}
-            {/* KPI サマリカード行（cabacc 5カード構成 × Vendas配色） */}
+            {/* KPI サマリカード行（cabacc 5カード構成 × #9999FF 基準濃淡） */}
             {/* ------------------------------------------------------- */}
             <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 shrink-0">
               {/* 1. ダークヒーローカード: 税込合計金額 */}
-              <div className="bg-gradient-to-br from-[#121429] via-[#242852] to-[#374D81] rounded-xl px-4 py-3 text-white border-2 border-[#4A66AC] shadow-sm flex flex-col justify-between col-span-2 lg:col-span-1">
-                <div className="flex items-center justify-between text-xs font-bold text-[#D4E5F6]">
+              <div className="bg-gradient-to-br from-[#19194D] via-[#2B2B80] to-[#4747B3] rounded-xl px-4 py-3 text-white border-2 border-[#9999FF] shadow-sm flex flex-col justify-between col-span-2 lg:col-span-1">
+                <div className="flex items-center justify-between text-xs font-bold text-[#CCCCFF]">
                   <span>💰 税込合計金額</span>
-                  <span className="px-1.5 py-0.5 rounded bg-[#4A66AC]/40 text-[10px] font-mono text-white">
+                  <span className="px-1.5 py-0.5 rounded bg-[#7878FF]/45 text-[10px] font-mono text-white">
                     {currentEntryType === 'ADVANCE' ? '立替' : '売上'}
                   </span>
                 </div>
                 <div className="mt-1.5 text-2xl font-black font-mono tabular-nums tracking-tight text-white">
                   {formatYen(pageData.summary.totalAmount)}
                 </div>
-                <div className="mt-1 text-[11px] text-[#B5C1DF] font-mono flex items-center justify-between">
+                <div className="mt-1 text-[11px] text-[#B3B3FF] font-mono flex items-center justify-between">
                   <span>対象: {pageData.summary.totalCount}件</span>
-                  <span className="text-[#D4E5F6]">表示: {displayedItems.length}件</span>
+                  <span className="text-[#E6E6FF]">表示: {displayedItems.length}件</span>
                 </div>
               </div>
 
               {/* 2. 税抜金額合計 */}
-              <div className="bg-white rounded-xl px-4 py-3 border-2 border-[#B5C1DF] text-[#242852] shadow-2xs flex flex-col justify-between">
-                <div className="flex items-center justify-between text-xs font-bold text-[#3B528A]">
+              <div className="bg-white rounded-xl px-4 py-3 border-2 border-[#B3B3FF] text-[#1F1F5C] shadow-2xs flex flex-col justify-between">
+                <div className="flex items-center justify-between text-xs font-bold text-[#4D4DB3]">
                   <span>💴 税抜金額合計</span>
-                  <span className="text-[10px] font-mono text-[#7F8FA9]">EXCL</span>
+                  <span className="text-[10px] font-mono text-[#7878FF]">EXCL</span>
                 </div>
-                <div className="mt-1.5 text-xl xl:text-2xl font-black font-mono tabular-nums tracking-tight text-[#242852]">
+                <div className="mt-1.5 text-xl xl:text-2xl font-black font-mono tabular-nums tracking-tight text-[#1F1F5C]">
                   {formatYen(pageData.summary.subtotalAmount)}
                 </div>
-                <div className="mt-1 text-[11px] text-[#7F8FA9] font-mono flex items-center justify-between">
+                <div className="mt-1 text-[11px] text-[#666699] font-mono flex items-center justify-between">
                   <span>表示分税抜</span>
                   <span>{formatYen(displayedTotals.subtotal)}</span>
                 </div>
               </div>
 
               {/* 3. 消費税合計 */}
-              <div className="bg-white rounded-xl px-4 py-3 border-2 border-[#B5C1DF] text-[#242852] shadow-2xs flex flex-col justify-between">
-                <div className="flex items-center justify-between text-xs font-bold text-[#3B528A]">
+              <div className="bg-white rounded-xl px-4 py-3 border-2 border-[#B3B3FF] text-[#1F1F5C] shadow-2xs flex flex-col justify-between">
+                <div className="flex items-center justify-between text-xs font-bold text-[#4D4DB3]">
                   <span>🧮 消費税合計</span>
-                  <span className="text-[10px] font-mono text-[#7F8FA9]">TAX</span>
+                  <span className="text-[10px] font-mono text-[#7878FF]">TAX</span>
                 </div>
-                <div className="mt-1.5 text-xl xl:text-2xl font-black font-mono tabular-nums tracking-tight text-[#242852]">
+                <div className="mt-1.5 text-xl xl:text-2xl font-black font-mono tabular-nums tracking-tight text-[#1F1F5C]">
                   {formatYen(pageData.summary.taxTotal)}
                 </div>
-                <div className="mt-1 text-[11px] text-[#7F8FA9] font-mono flex items-center justify-between">
+                <div className="mt-1 text-[11px] text-[#666699] font-mono flex items-center justify-between">
                   <span>表示分税額</span>
                   <span>{formatYen(displayedTotals.tax)}</span>
                 </div>
               </div>
 
               {/* 4. 承認済件数 */}
-              <div className="bg-white rounded-xl px-4 py-3 border-2 border-[#B5C1DF] text-[#242852] shadow-2xs flex flex-col justify-between">
-                <div className="flex items-center justify-between text-xs font-bold text-[#3B528A]">
+              <div className="bg-white rounded-xl px-4 py-3 border-2 border-[#B3B3FF] text-[#1F1F5C] shadow-2xs flex flex-col justify-between">
+                <div className="flex items-center justify-between text-xs font-bold text-[#4D4DB3]">
                   <span>✅ 承認済伝票</span>
                   <span className="text-[10px] font-mono text-emerald-700">APPROVED</span>
                 </div>
                 <div className="mt-1.5 text-xl xl:text-2xl font-black font-mono tabular-nums tracking-tight text-emerald-700">
                   {pageData.summary.approvedCount}{' '}
-                  <span className="text-xs font-sans font-bold text-[#7F8FA9]">件</span>
+                  <span className="text-xs font-sans font-bold text-[#666699]">件</span>
                 </div>
-                <div className="mt-1 text-[11px] text-[#7F8FA9] font-mono flex items-center justify-between">
+                <div className="mt-1 text-[11px] text-[#666699] font-mono flex items-center justify-between">
                   <span>承認率</span>
-                  <span className="font-bold text-[#242852]">{approvalRateText}</span>
+                  <span className="font-bold text-[#333399]">{approvalRateText}</span>
                 </div>
               </div>
 
               {/* 5. 未承認・確認待件数 */}
-              <div className="bg-white rounded-xl px-4 py-3 border-2 border-[#B5C1DF] text-[#242852] shadow-2xs flex flex-col justify-between">
-                <div className="flex items-center justify-between text-xs font-bold text-[#3B528A]">
+              <div className="bg-white rounded-xl px-4 py-3 border-2 border-[#B3B3FF] text-[#1F1F5C] shadow-2xs flex flex-col justify-between">
+                <div className="flex items-center justify-between text-xs font-bold text-[#4D4DB3]">
                   <span>⏳ 未承認・確認待</span>
-                  <span className="text-[10px] font-mono text-[#7F8FA9]">PENDING</span>
+                  <span className="text-[10px] font-mono text-[#7878FF]">PENDING</span>
                 </div>
                 <div
                   className={`mt-1.5 text-xl xl:text-2xl font-black font-mono tabular-nums tracking-tight ${
-                    pageData.summary.pendingCount > 0 ? 'text-[#C00000]' : 'text-[#242852]'
+                    pageData.summary.pendingCount > 0 ? 'text-[#C00000]' : 'text-[#1F1F5C]'
                   }`}
                 >
                   {pageData.summary.pendingCount}{' '}
-                  <span className="text-xs font-sans font-bold text-[#7F8FA9]">件</span>
+                  <span className="text-xs font-sans font-bold text-[#666699]">件</span>
                 </div>
-                <div className="mt-1 text-[11px] text-[#7F8FA9] font-mono flex items-center justify-between">
+                <div className="mt-1 text-[11px] text-[#666699] font-mono flex items-center justify-between">
                   <span>選択中</span>
-                  <span className="font-bold text-[#4A66AC]">{selectedIds.length} 件</span>
+                  <span className="font-bold text-[#5252CC]">{selectedIds.length} 件</span>
                 </div>
               </div>
             </div>
 
             {/* ------------------------------------------------------- */}
-            {/* 常設コントロール ＆ 検索バー（cabacc スタイル × Access 配色） */}
+            {/* 常設コントロール ＆ 検索バー（cabacc スタイル × #9999FF 基準濃淡） */}
             {/* ------------------------------------------------------- */}
             <form
               onSubmit={handleSearchSubmit}
-              className="relative bg-white pl-4 pr-3.5 py-2.5 rounded-xl border-2 border-[#90A2CF] shadow-2xs flex flex-wrap items-center justify-between gap-2.5 shrink-0"
+              className="relative bg-white pl-4 pr-3.5 py-2.5 rounded-xl border-2 border-[#9999FF] shadow-2xs flex flex-wrap items-center justify-between gap-2.5 shrink-0"
             >
-              <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-[#4A66AC] rounded-l-xl" />
+              <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-[#7878FF] rounded-l-xl" />
 
               <div className="flex flex-wrap items-center gap-2 min-w-0">
                 {/* 月送りナビゲーション（cabacc 踏襲） */}
@@ -861,7 +861,7 @@ export default function SalesListClient({
                     type="button"
                     onClick={() => handleShiftMonth(-1)}
                     disabled={loading}
-                    className="h-8 px-3 rounded-full bg-gradient-to-b from-white via-[#F0F3F9] to-[#D4E5F6] hover:to-[#B5C1DF] text-[#242852] border border-[#90A2CF] font-bold text-xs transition transform hover:-translate-y-0.5 active:translate-y-px flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                    className="h-8 px-3 rounded-full bg-gradient-to-b from-white via-[#F0F0FF] to-[#CCCCFF] hover:to-[#B3B3FF] text-[#333399] border border-[#9999FF] font-bold text-xs transition transform hover:-translate-y-0.5 active:translate-y-px flex items-center gap-1 cursor-pointer disabled:opacity-50"
                     title="前月へ"
                   >
                     <span>◀ 前月</span>
@@ -875,7 +875,7 @@ export default function SalesListClient({
                         ? 'クリックで全期間表示に戻す'
                         : 'クリックで当月で絞り込む'
                     }
-                    className="h-8 px-3 rounded-lg border border-[#4A66AC] bg-[#F0F3F9] hover:bg-[#D4E5F6] text-xs font-mono font-black text-[#242852] inline-flex items-center gap-1.5 cursor-pointer transition shadow-2xs"
+                    className="h-8 px-3 rounded-lg border border-[#7878FF] bg-[#F0F0FF] hover:bg-[#D6D6FF] text-xs font-mono font-black text-[#1F1F5C] inline-flex items-center gap-1.5 cursor-pointer transition shadow-2xs"
                   >
                     <span>📅</span>
                     <span>{activeMonthLabel}</span>
@@ -884,7 +884,7 @@ export default function SalesListClient({
                     type="button"
                     onClick={() => handleShiftMonth(1)}
                     disabled={loading}
-                    className="h-8 px-3 rounded-full bg-gradient-to-b from-white via-[#F0F3F9] to-[#D4E5F6] hover:to-[#B5C1DF] text-[#242852] border border-[#90A2CF] font-bold text-xs transition transform hover:-translate-y-0.5 active:translate-y-px flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                    className="h-8 px-3 rounded-full bg-gradient-to-b from-white via-[#F0F0FF] to-[#CCCCFF] hover:to-[#B3B3FF] text-[#333399] border border-[#9999FF] font-bold text-xs transition transform hover:-translate-y-0.5 active:translate-y-px flex items-center gap-1 cursor-pointer disabled:opacity-50"
                     title="翌月へ"
                   >
                     <span>翌月 ▶</span>
@@ -892,16 +892,16 @@ export default function SalesListClient({
                 </div>
 
                 {loading && (
-                  <span className="inline-flex items-center gap-1 text-xs font-bold bg-[#D4E5F6] text-[#242852] border border-[#4A66AC] px-2.5 py-1 rounded-md animate-pulse">
+                  <span className="inline-flex items-center gap-1 text-xs font-bold bg-[#CCCCFF] text-[#1F1F5C] border border-[#7878FF] px-2.5 py-1 rounded-md animate-pulse">
                     読込中...
                   </span>
                 )}
 
-                <span className="text-[#B5C1DF] hidden xl:inline">|</span>
+                <span className="text-[#B3B3FF] hidden xl:inline">|</span>
 
                 {/* キーワード検索 */}
                 <div className="relative w-52 sm:w-60">
-                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-[#4A66AC]">
+                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-[#5252CC]">
                     🔍
                   </span>
                   <input
@@ -909,7 +909,7 @@ export default function SalesListClient({
                     value={keyword}
                     onChange={(e) => setKeyword(e.target.value)}
                     placeholder="伝票No・件名・取引先・案件..."
-                    className="w-full h-8 pl-7 pr-2.5 text-xs bg-white border border-[#90A2CF] hover:border-[#4A66AC] rounded-lg focus:border-[#4A66AC] focus:ring-2 focus:ring-[#4A66AC]/25 focus:outline-hidden font-semibold text-[#242852] placeholder:text-[#7F8FA9] placeholder:font-normal"
+                    className="w-full h-8 pl-7 pr-2.5 text-xs bg-white border border-[#9999FF] hover:border-[#7878FF] rounded-lg focus:border-[#5252CC] focus:ring-2 focus:ring-[#9999FF]/35 focus:outline-hidden font-semibold text-[#1F1F5C] placeholder:text-[#666699] placeholder:font-normal"
                   />
                 </div>
 
@@ -918,7 +918,7 @@ export default function SalesListClient({
                   aria-label="ステータス"
                   value={status}
                   onChange={(e) => setStatus(e.target.value as '' | SalesStatus)}
-                  className="h-8 rounded-lg border border-[#90A2CF] hover:border-[#4A66AC] focus:border-[#4A66AC] bg-white px-2 text-xs font-semibold text-[#242852]"
+                  className="h-8 rounded-lg border border-[#9999FF] hover:border-[#7878FF] focus:border-[#5252CC] bg-white px-2 text-xs font-semibold text-[#1F1F5C]"
                 >
                   <option value="">状態: すべて</option>
                   {(Object.keys(SALES_STATUS_LABELS) as SalesStatus[]).map((st) => (
@@ -932,7 +932,7 @@ export default function SalesListClient({
                   aria-label="承認状態"
                   value={approvalFilter}
                   onChange={(e) => setApprovalFilter(e.target.value as '' | '0' | '1' | '2')}
-                  className="h-8 rounded-lg border border-[#90A2CF] hover:border-[#4A66AC] focus:border-[#4A66AC] bg-white px-2 text-xs font-semibold text-[#242852]"
+                  className="h-8 rounded-lg border border-[#9999FF] hover:border-[#7878FF] focus:border-[#5252CC] bg-white px-2 text-xs font-semibold text-[#1F1F5C]"
                 >
                   <option value="">承認: すべて</option>
                   <option value="0">未承認</option>
@@ -944,7 +944,7 @@ export default function SalesListClient({
                   aria-label="案件紐付"
                   value={projectLink}
                   onChange={(e) => setProjectLink(e.target.value as 'ALL' | 'LINKED' | 'UNLINKED')}
-                  className="h-8 rounded-lg border border-[#90A2CF] hover:border-[#4A66AC] focus:border-[#4A66AC] bg-white px-2 text-xs font-semibold text-[#242852]"
+                  className="h-8 rounded-lg border border-[#9999FF] hover:border-[#7878FF] focus:border-[#5252CC] bg-white px-2 text-xs font-semibold text-[#1F1F5C]"
                 >
                   <option value="ALL">案件: すべて</option>
                   <option value="LINKED">案件あり</option>
@@ -957,23 +957,23 @@ export default function SalesListClient({
                     type="date"
                     value={dateFrom}
                     onChange={(e) => setDateFrom(e.target.value)}
-                    className="h-8 rounded-lg border border-[#90A2CF] focus:border-[#4A66AC] px-2 text-xs font-mono text-[#242852] bg-white"
+                    className="h-8 rounded-lg border border-[#9999FF] focus:border-[#5252CC] px-2 text-xs font-mono text-[#1F1F5C] bg-white"
                   />
-                  <span className="text-xs text-[#7F8FA9]">〜</span>
+                  <span className="text-xs text-[#666699]">〜</span>
                   <input
                     aria-label="売上日To"
                     type="date"
                     value={dateTo}
                     onChange={(e) => setDateTo(e.target.value)}
-                    className="h-8 rounded-lg border border-[#90A2CF] focus:border-[#4A66AC] px-2 text-xs font-mono text-[#242852] bg-white"
+                    className="h-8 rounded-lg border border-[#9999FF] focus:border-[#5252CC] px-2 text-xs font-mono text-[#1F1F5C] bg-white"
                   />
                 </div>
 
-                {/* Access版 fm_売上一覧 の cmdsearch (#C00000) & cmdClear (#4A66AC) */}
+                {/* 検索 (#9999FF濃色) & クリア (#9999FF淡色) */}
                 <button
                   type="submit"
                   disabled={loading}
-                  className="h-8 px-4 rounded-full bg-gradient-to-b from-[#C00000] to-[#9A0000] hover:from-[#d90000] hover:to-[#C00000] text-white border border-[#9A0000] text-xs font-bold shadow-xs cursor-pointer transition disabled:opacity-50"
+                  className="h-8 px-4 rounded-full bg-gradient-to-b from-[#5C5CD6] to-[#333399] hover:from-[#7878FF] hover:to-[#4747B3] text-white border border-[#242466] text-xs font-bold shadow-xs cursor-pointer transition disabled:opacity-50"
                 >
                   {loading ? '検索中...' : '検索'}
                 </button>
@@ -981,17 +981,17 @@ export default function SalesListClient({
                   type="button"
                   onClick={handleResetFilters}
                   disabled={loading}
-                  className="h-8 px-3.5 rounded-full bg-gradient-to-b from-[#4A66AC] to-[#3B528A] hover:from-[#5974B8] hover:to-[#4A66AC] text-white border border-[#3B528A] text-xs font-bold shadow-2xs cursor-pointer transition disabled:opacity-50"
+                  className="h-8 px-3.5 rounded-full bg-gradient-to-b from-white via-[#F0F0FF] to-[#CCCCFF] hover:to-[#B3B3FF] text-[#333399] border border-[#9999FF] text-xs font-bold shadow-2xs cursor-pointer transition disabled:opacity-50"
                 >
                   クリア
                 </button>
               </div>
 
               {/* 右側: 表示日・件数バッジ */}
-              <div className="hidden xl:flex items-center gap-2 px-3 h-8 rounded-lg bg-[#F0F3F9] border border-[#B5C1DF] text-xs shrink-0">
-                <span className="text-[11px] text-[#5F718E] font-medium">表示日:</span>
-                <span className="font-mono font-bold text-[#242852]">{selectedDateDisplay}</span>
-                <span className="px-2 py-0.5 rounded-md text-[10px] font-mono font-black bg-[#D4E5F6] text-[#242852] border border-[#4A66AC]">
+              <div className="hidden xl:flex items-center gap-2 px-3 h-8 rounded-lg bg-[#F0F0FF] border border-[#B3B3FF] text-xs shrink-0">
+                <span className="text-[11px] text-[#4D4DB3] font-medium">表示日:</span>
+                <span className="font-mono font-bold text-[#1F1F5C]">{selectedDateDisplay}</span>
+                <span className="px-2 py-0.5 rounded-md text-[10px] font-mono font-black bg-[#CCCCFF] text-[#1F1F5C] border border-[#7878FF]">
                   全 {pageData.summary.totalCount} 伝票
                 </span>
               </div>
@@ -999,8 +999,8 @@ export default function SalesListClient({
 
             {/* 一括承認操作バー */}
             {selectedIds.length > 0 && (
-              <div className="rounded-xl border-2 border-[#4A66AC] bg-[#D4E5F6] px-4 py-2 flex flex-wrap items-center justify-between gap-2 shrink-0 shadow-2xs">
-                <span className="text-xs font-black text-[#242852]">
+              <div className="rounded-xl border-2 border-[#7878FF] bg-[#CCCCFF] px-4 py-2 flex flex-wrap items-center justify-between gap-2 shrink-0 shadow-2xs">
+                <span className="text-xs font-black text-[#1F1F5C]">
                   ☑ {selectedIds.length} 件の伝票を選択中
                 </span>
                 <div className="flex flex-wrap items-center gap-2">
@@ -1024,14 +1024,14 @@ export default function SalesListClient({
                     type="button"
                     disabled={busy}
                     onClick={() => void handleBatchApproval(0)}
-                    className="h-7 rounded-full border border-[#4A66AC] bg-white hover:bg-[#F0F3F9] px-3.5 text-xs font-bold text-[#242852] cursor-pointer"
+                    className="h-7 rounded-full border border-[#7878FF] bg-white hover:bg-[#F0F0FF] px-3.5 text-xs font-bold text-[#333399] cursor-pointer"
                   >
                     未承認に戻す
                   </button>
                   <button
                     type="button"
                     onClick={() => setSelectedIds([])}
-                    className="h-7 rounded-full border border-[#90A2CF] bg-[#F0F3F9] hover:bg-white px-3 text-xs font-medium text-[#40485C] cursor-pointer"
+                    className="h-7 rounded-full border border-[#9999FF] bg-[#F0F0FF] hover:bg-white px-3 text-xs font-medium text-[#4D4DB3] cursor-pointer"
                   >
                     選択解除
                   </button>
@@ -1044,50 +1044,50 @@ export default function SalesListClient({
             {/* ========================================================= */}
             <div className="flex-1 min-h-[440px] flex flex-col lg:flex-row gap-3.5 lg:overflow-hidden">
               {/* 1. 左サイドバー: 売上日別一覧カード */}
-              <aside className="w-full lg:w-64 xl:w-72 bg-white rounded-xl border-2 border-[#4A66AC]/80 shadow-2xs flex flex-col shrink-0 overflow-hidden max-h-64 lg:max-h-none lg:h-full">
+              <aside className="w-full lg:w-64 xl:w-72 bg-white rounded-xl border-2 border-[#9999FF] shadow-2xs flex flex-col shrink-0 overflow-hidden max-h-64 lg:max-h-none lg:h-full">
                 {/* サイドバーヘッダ */}
-                <div className="h-9 bg-gradient-to-r from-[#4A66AC] via-[#3B528A] to-[#4A66AC] text-white border-b border-[#242852] px-3 flex items-center justify-between font-bold text-xs shrink-0">
+                <div className="h-9 bg-gradient-to-r from-[#7878FF] via-[#6666D9] to-[#7878FF] text-white border-b border-[#5252CC] px-3 flex items-center justify-between font-bold text-xs shrink-0">
                   <span className="flex items-center gap-1.5">
                     <span>📅</span>
                     <span>売上日別一覧</span>
                   </span>
-                  <span className="px-2 py-0.5 rounded bg-[#D4E5F6] text-[#242852] font-mono font-black text-[10px] border border-[#242852]/20">
+                  <span className="px-2 py-0.5 rounded bg-[#E6E6FF] text-[#1F1F5C] font-mono font-black text-[10px] border border-[#333399]/20">
                     {pageData.items.length}件
                   </span>
                 </div>
 
                 {/* 日付カードリスト */}
-                <div className="flex-1 min-h-0 overflow-y-auto p-1.5 space-y-1 divide-y divide-[#F0F3F9]">
+                <div className="flex-1 min-h-0 overflow-y-auto p-1.5 space-y-1 divide-y divide-[#F0F0FF]">
                   {/* 先頭: 全表示カード */}
                   <button
                     type="button"
                     onClick={() => setSelectedDateFilter(null)}
                     className={`w-full text-left p-2 rounded-lg transition border flex flex-col justify-between cursor-pointer ${
                       selectedDateFilter === null
-                        ? 'bg-[#D4E5F6]/90 border-[#4A66AC] shadow-2xs'
-                        : 'bg-white border-transparent hover:bg-[#F0F3F9] hover:border-[#B5C1DF]'
+                        ? 'bg-[#CCCCFF]/75 border-[#7878FF] shadow-2xs'
+                        : 'bg-white border-transparent hover:bg-[#F0F0FF] hover:border-[#CCCCFF]'
                     }`}
                   >
                     <div className="flex items-center justify-between gap-1">
                       <div className="flex items-center gap-1.5">
                         <span
                           className={`w-2 h-2 rounded-full shrink-0 ${
-                            selectedDateFilter === null ? 'bg-[#4A66AC]' : 'bg-[#B5C1DF]'
+                            selectedDateFilter === null ? 'bg-[#5252CC]' : 'bg-[#CCCCFF]'
                           }`}
                         />
-                        <span className="font-bold text-xs text-[#242852]">
+                        <span className="font-bold text-xs text-[#1F1F5C]">
                           📋 すべて表示（頁内全件）
                         </span>
                       </div>
-                      <span className="px-1.5 py-0.5 rounded font-mono text-[10px] font-bold bg-[#4A66AC] text-white">
+                      <span className="px-1.5 py-0.5 rounded font-mono text-[10px] font-bold bg-[#7878FF] text-white">
                         {pageData.items.length}件
                       </span>
                     </div>
                     <div className="mt-1 flex items-center justify-between text-[11px] font-mono">
-                      <span className="text-[10px] text-[#5F718E] font-sans">
+                      <span className="text-[10px] text-[#4D4DB3] font-sans">
                         ページ {pageData.page} / {totalPages}
                       </span>
-                      <span className="font-black text-xs text-[#242852] tabular-nums">
+                      <span className="font-black text-xs text-[#1F1F5C] tabular-nums">
                         {formatYen(pageItemsTotals.total)}
                       </span>
                     </div>
@@ -1107,8 +1107,8 @@ export default function SalesListClient({
                         title={`${group.displayDate} (${group.dayOfWeek}) の伝票を表示`}
                         className={`w-full text-left p-2 rounded-lg transition border flex flex-col justify-between cursor-pointer ${
                           isSelected
-                            ? 'bg-[#D4E5F6]/90 border-[#4A66AC] shadow-2xs'
-                            : 'bg-white border-transparent hover:bg-[#F0F3F9] hover:border-[#B5C1DF]'
+                            ? 'bg-[#CCCCFF]/75 border-[#7878FF] shadow-2xs'
+                            : 'bg-white border-transparent hover:bg-[#F0F0FF] hover:border-[#CCCCFF]'
                         }`}
                       >
                         <div className="flex items-center justify-between gap-1">
@@ -1116,13 +1116,13 @@ export default function SalesListClient({
                             <span
                               className={`w-2 h-2 rounded-full shrink-0 ${
                                 isSelected
-                                  ? 'bg-[#C00000]'
+                                  ? 'bg-[#333399]'
                                   : group.pendingCount > 0
-                                    ? 'bg-[#4A66AC]'
-                                    : 'bg-[#5AA2AE]'
+                                    ? 'bg-[#7878FF]'
+                                    : 'bg-[#9999FF]'
                               }`}
                             />
-                            <span className="font-mono font-black text-xs text-[#242852]">
+                            <span className="font-mono font-black text-xs text-[#1F1F5C]">
                               {group.displayDate}
                             </span>
                             <span
@@ -1130,26 +1130,26 @@ export default function SalesListClient({
                                 group.isSunday
                                   ? 'text-[#C00000]'
                                   : group.isSaturday
-                                    ? 'text-[#4A66AC]'
-                                    : 'text-[#7F8FA9]'
+                                    ? 'text-[#333399]'
+                                    : 'text-[#666699]'
                               }`}
                             >
                               ({group.dayOfWeek})
                             </span>
                           </div>
 
-                          <span className="px-1.5 py-0.5 rounded font-mono text-[10px] font-bold bg-[#D4E5F6] text-[#242852] border border-[#90A2CF] shrink-0">
+                          <span className="px-1.5 py-0.5 rounded font-mono text-[10px] font-bold bg-[#E6E6FF] text-[#1F1F5C] border border-[#9999FF] shrink-0">
                             {group.count}件
                           </span>
                         </div>
 
                         <div className="mt-1 flex items-center justify-between text-[11px] font-mono">
-                          <span className="text-[10px] font-sans text-[#7F8FA9]">
+                          <span className="text-[10px] font-sans text-[#666699]">
                             {group.pendingCount > 0
                               ? `未承認 ${group.pendingCount}`
                               : `承認済 ${group.approvedCount}`}
                           </span>
-                          <span className="font-black text-xs text-[#242852] tabular-nums">
+                          <span className="font-black text-xs text-[#1F1F5C] tabular-nums">
                             {formatYen(group.totalAmount)}
                           </span>
                         </div>
@@ -1159,7 +1159,7 @@ export default function SalesListClient({
                 </div>
 
                 {/* サイドバーフッタ */}
-                <div className="p-2.5 border-t-2 border-[#4A66AC] bg-gradient-to-r from-[#B5C1DF] via-[#CBD4E9] to-[#B5C1DF] text-xs font-mono flex items-center justify-between shrink-0 text-[#242852]">
+                <div className="p-2.5 border-t-2 border-[#7878FF] bg-gradient-to-r from-[#C2C2FF] via-[#D6D6FF] to-[#C2C2FF] text-xs font-mono flex items-center justify-between shrink-0 text-[#1F1F5C]">
                   <span className="text-[10px] font-sans font-bold">
                     表示中 {displayedItems.length} 伝票
                   </span>
@@ -1173,11 +1173,11 @@ export default function SalesListClient({
               </aside>
 
               {/* 2. 右メインパネル: 伝票一覧テーブル */}
-              <div className="flex-1 min-w-0 min-h-0 bg-white rounded-xl border-2 border-[#4A66AC]/80 shadow-2xs overflow-hidden flex flex-col">
+              <div className="flex-1 min-w-0 min-h-0 bg-white rounded-xl border-2 border-[#9999FF] shadow-2xs overflow-hidden flex flex-col">
                 <div className="flex-1 min-h-0 overflow-auto">
                   <table className="w-full h-full min-w-[980px] text-left border-collapse text-xs">
-                    <thead className="sticky top-0 z-20 shadow-[0_1px_0_0_rgba(74,102,172,0.35)]">
-                      <tr className="h-9 bg-gradient-to-r from-[#D4E5F6] via-[#E4EFFA] to-[#D4E5F6] border-b-2 border-[#4A66AC] text-[#242852] font-black text-xs select-none">
+                    <thead className="sticky top-0 z-20 shadow-[0_1px_0_0_rgba(120,120,255,0.4)]">
+                      <tr className="h-9 bg-gradient-to-r from-[#CCCCFF] via-[#DDDDFF] to-[#CCCCFF] border-b-2 border-[#7878FF] text-[#1F1F5C] font-black text-xs select-none">
                         <th className="h-9 px-2.5 w-9 text-center">
                           <input
                             type="checkbox"
@@ -1187,7 +1187,7 @@ export default function SalesListClient({
                               selectableCount > 0 && selectedIds.length === selectableCount
                             }
                             title="未請求伝票を全選択"
-                            className="cursor-pointer accent-[#4A66AC]"
+                            className="cursor-pointer accent-[#5252CC]"
                           />
                         </th>
                         <th className="h-9 py-1 px-2.5 text-center whitespace-nowrap">
@@ -1222,21 +1222,21 @@ export default function SalesListClient({
                       </tr>
                     </thead>
 
-                    <tbody className="divide-y divide-[#D0D7D9] font-sans">
+                    <tbody className="divide-y divide-[#D6D6FF] font-sans">
                       {displayedItems.length === 0 ? (
                         <tr>
                           <td colSpan={12} className="px-6 py-16 text-center bg-white">
                             <div className="flex flex-col items-center justify-center gap-2.5">
                               <span className="text-3xl">🧾</span>
-                              <p className="text-sm font-black text-[#242852]">
+                              <p className="text-sm font-black text-[#1F1F5C]">
                                 条件に一致する伝票データがありません
                               </p>
-                              <p className="text-xs text-[#7F8FA9]">
+                              <p className="text-xs text-[#666699]">
                                 検索条件または左の売上日別フィルタを変更するか、新規伝票を発行してください。
                               </p>
                               <Link
                                 href={`/sales/new?entryType=${currentEntryType}`}
-                                className="mt-1 h-8 px-4 rounded-full bg-gradient-to-b from-[#4A66AC] to-[#3B528A] text-white text-xs font-bold inline-flex items-center gap-1 shadow-xs"
+                                className="mt-1 h-8 px-4 rounded-full bg-gradient-to-b from-[#7878FF] to-[#5252CC] text-white text-xs font-bold inline-flex items-center gap-1 shadow-xs"
                               >
                                 ＋ 新規{currentEntryType === 'ADVANCE' ? '立替金' : '売上'}発行
                               </Link>
@@ -1247,7 +1247,7 @@ export default function SalesListClient({
                         <>
                           {displayedItems.map((item, idx) => {
                             const isBilled = item.status === 'K4' || item.status === 'K5';
-                            const zebraClass = idx % 2 === 0 ? 'bg-white' : 'bg-[#F0F3F9]/75';
+                            const zebraClass = idx % 2 === 0 ? 'bg-white' : 'bg-[#F5F5FF]';
                             return (
                               <tr
                                 key={item.id}
@@ -1260,7 +1260,7 @@ export default function SalesListClient({
                                   }
                                   router.push(`/sales/${item.id}`);
                                 }}
-                                className={`h-9 ${zebraClass} hover:bg-[#DDEAF8]/90 transition-colors cursor-pointer group`}
+                                className={`h-9 ${zebraClass} hover:bg-[#D6D6FF]/65 transition-colors cursor-pointer group`}
                               >
                                 <td className="h-9 px-2.5 text-center">
                                   <input
@@ -1268,32 +1268,32 @@ export default function SalesListClient({
                                     disabled={isBilled}
                                     checked={selectedIds.includes(item.id)}
                                     onChange={() => toggleRowSelect(item.id)}
-                                    className="cursor-pointer disabled:cursor-not-allowed accent-[#4A66AC]"
+                                    className="cursor-pointer disabled:cursor-not-allowed accent-[#5252CC]"
                                   />
                                 </td>
-                                <td className="h-9 py-1 px-2.5 text-center font-mono font-black text-[#4A66AC] whitespace-nowrap">
+                                <td className="h-9 py-1 px-2.5 text-center font-mono font-black text-[#333399] whitespace-nowrap">
                                   <Link
                                     href={`/sales/${item.id}`}
-                                    className="hover:text-[#9454C3] hover:underline"
+                                    className="hover:text-[#5252CC] hover:underline"
                                   >
                                     {item.entryType === 'ADVANCE'
                                       ? `T-${item.slipNo}`
                                       : `#${item.slipNo}`}
                                   </Link>
                                 </td>
-                                <td className="h-9 py-1 px-2.5 text-center font-mono text-xs text-[#242852] whitespace-nowrap">
+                                <td className="h-9 py-1 px-2.5 text-center font-mono text-xs text-[#1F1F5C] whitespace-nowrap">
                                   {item.slipDate.replace(/-/g, '/')}
                                 </td>
                                 <td className="h-9 py-1 px-2.5 text-center whitespace-nowrap">
                                   <span
                                     className={`inline-flex px-2 py-0.5 rounded-full text-[11px] font-bold border ${
                                       isBilled
-                                        ? 'bg-[#F3E8FF] text-[#6B21A8] border-[#9454C3]/40'
+                                        ? 'bg-[#C2C2FF] text-[#19194D] border-[#7878FF]'
                                         : item.status === 'K3'
-                                          ? 'bg-[#ADD0D7]/45 text-[#242852] border-[#5AA2AE]'
+                                          ? 'bg-[#D6D6FF] text-[#1F1F5C] border-[#7878FF]/70'
                                           : item.status === 'K2'
-                                            ? 'bg-[#D4E5F6] text-[#242852] border-[#4A66AC]/50'
-                                            : 'bg-[#F0F3F9] text-[#40485C] border-[#B5C1DF]'
+                                            ? 'bg-[#E6E6FF] text-[#333399] border-[#9999FF]'
+                                            : 'bg-[#F5F5FF] text-[#4D4DB3] border-[#B3B3FF]'
                                     }`}
                                   >
                                     {item.status}: {SALES_STATUS_LABELS[item.status]}
@@ -1312,50 +1312,50 @@ export default function SalesListClient({
                                     {APPROVAL_STATUS_LABELS[item.approvalStatus]}
                                   </span>
                                 </td>
-                                <td className="h-9 py-1 px-3 text-[#242852]">
+                                <td className="h-9 py-1 px-3 text-[#1F1F5C]">
                                   <div className="font-bold text-xs truncate max-w-[200px]">
                                     {item.partnerName}
                                   </div>
-                                  <div className="text-[10px] font-mono text-[#7F8FA9]">
+                                  <div className="text-[10px] font-mono text-[#666699]">
                                     {item.partnerCode}
                                   </div>
                                 </td>
-                                <td className="h-9 py-1 px-3 text-[#242852]">
+                                <td className="h-9 py-1 px-3 text-[#1F1F5C]">
                                   <Link
                                     href={`/sales/${item.id}`}
-                                    className="font-bold text-xs text-[#242852] group-hover:text-[#9454C3] hover:underline block truncate max-w-[260px]"
+                                    className="font-bold text-xs text-[#1F1F5C] group-hover:text-[#5252CC] hover:underline block truncate max-w-[260px]"
                                   >
                                     {item.slipName !== '' ? item.slipName : '（件名なし）'}
                                   </Link>
                                   <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
                                     {item.projectName !== null && (
-                                      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#ADD0D7]/55 text-[#242852] border border-[#5AA2AE]">
+                                      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#E6E6FF] text-[#333399] border border-[#9999FF]">
                                         工事 #{item.projectNo}: {item.projectName}
                                       </span>
                                     )}
-                                    <span className="text-[10px] font-mono text-[#7F8FA9]">
+                                    <span className="text-[10px] font-mono text-[#666699]">
                                       明細 {item.lineCount}行
                                     </span>
                                   </div>
                                 </td>
-                                <td className="h-9 py-1 px-3 text-right font-mono tabular-nums text-xs text-[#40485C] whitespace-nowrap">
+                                <td className="h-9 py-1 px-3 text-right font-mono tabular-nums text-xs text-[#333366] whitespace-nowrap">
                                   {formatYen(item.subtotalAmount)}
                                 </td>
-                                <td className="h-9 py-1 px-3 text-right font-mono tabular-nums text-xs text-[#5F718E] whitespace-nowrap">
+                                <td className="h-9 py-1 px-3 text-right font-mono tabular-nums text-xs text-[#4D4DB3] whitespace-nowrap">
                                   {formatYen(item.taxTotal)}
                                 </td>
-                                <td className="h-9 py-1 px-3 text-right font-mono tabular-nums text-xs font-black text-[#242852] whitespace-nowrap">
+                                <td className="h-9 py-1 px-3 text-right font-mono tabular-nums text-xs font-black text-[#19194D] whitespace-nowrap">
                                   {formatYen(item.totalAmount)}
                                 </td>
                                 <td className="h-9 py-1 px-2.5 text-center whitespace-nowrap text-[11px] font-mono">
-                                  <span className="text-[#40485C]">
+                                  <span className="text-[#333399]">
                                     納:
                                     {item.latestDeliveryNoteVersion !== null
                                       ? `v${item.latestDeliveryNoteVersion}`
                                       : '-'}
                                   </span>
-                                  <span className="mx-1 text-[#B5C1DF]">/</span>
-                                  <span className="text-[#40485C]">
+                                  <span className="mx-1 text-[#B3B3FF]">/</span>
+                                  <span className="text-[#333399]">
                                     受:
                                     {item.latestDeliveryReceiptVersion !== null
                                       ? `v${item.latestDeliveryReceiptVersion}`
@@ -1366,7 +1366,7 @@ export default function SalesListClient({
                                   <div className="inline-flex items-center gap-1">
                                     <Link
                                       href={`/sales/${item.id}`}
-                                      className="h-6 px-2.5 rounded-full border border-[#90A2CF] bg-white hover:bg-[#D4E5F6] text-[11px] font-bold text-[#242852] inline-flex items-center transition"
+                                      className="h-6 px-2.5 rounded-full border border-[#9999FF] bg-white hover:bg-[#CCCCFF] text-[11px] font-bold text-[#333399] inline-flex items-center transition"
                                     >
                                       {isBilled ? '閲覧' : '開く'}
                                     </Link>
@@ -1395,13 +1395,13 @@ export default function SalesListClient({
                       )}
                     </tbody>
 
-                    {/* 下部固定 合計フッタ行（tfoot: Access Periwinkle #B5C1DF） */}
-                    <tfoot className="sticky bottom-0 z-20 shadow-[0_-1px_0_0_rgba(74,102,172,0.4)]">
-                      <tr className="h-9 bg-gradient-to-r from-[#B5C1DF] via-[#CBD4E9] to-[#B5C1DF] font-black text-[#242852] border-t-2 border-[#4A66AC] text-xs">
+                    {/* 下部固定 合計フッタ行（tfoot: #9999FF 淡濃ラベンダーブルー） */}
+                    <tfoot className="sticky bottom-0 z-20 shadow-[0_-1px_0_0_rgba(120,120,255,0.45)]">
+                      <tr className="h-9 bg-gradient-to-r from-[#C2C2FF] via-[#D6D6FF] to-[#C2C2FF] font-black text-[#1F1F5C] border-t-2 border-[#7878FF] text-xs">
                         <td colSpan={2} className="h-9 py-1 px-3 text-center whitespace-nowrap font-mono">
                           表示 {displayedItems.length} 伝票
                         </td>
-                        <td colSpan={5} className="h-9 py-1 px-3 text-left text-[11px] font-bold text-[#242852]">
+                        <td colSpan={5} className="h-9 py-1 px-3 text-left text-[11px] font-bold text-[#1F1F5C]">
                           {selectedDateFilter !== null
                             ? `選択日合計（${selectedDateDisplay}）`
                             : '表示一覧合計（当頁）'}
@@ -1409,13 +1409,13 @@ export default function SalesListClient({
                         <td className="h-9 py-1 px-3 text-right font-mono tabular-nums whitespace-nowrap">
                           {formatYen(displayedTotals.subtotal)}
                         </td>
-                        <td className="h-9 py-1 px-3 text-right font-mono tabular-nums whitespace-nowrap text-[#3B528A]">
+                        <td className="h-9 py-1 px-3 text-right font-mono tabular-nums whitespace-nowrap text-[#333399]">
                           {formatYen(displayedTotals.tax)}
                         </td>
-                        <td className="h-9 py-1 px-3 text-right font-mono tabular-nums font-black whitespace-nowrap text-[#121429]">
+                        <td className="h-9 py-1 px-3 text-right font-mono tabular-nums font-black whitespace-nowrap text-[#19194D]">
                           {formatYen(displayedTotals.total)}
                         </td>
-                        <td colSpan={2} className="h-9 py-1 px-3 text-right font-mono text-[10px] text-[#3B528A]">
+                        <td colSpan={2} className="h-9 py-1 px-3 text-right font-mono text-[10px] text-[#333399]">
                           VENDAS LEDGER
                         </td>
                       </tr>
@@ -1423,20 +1423,20 @@ export default function SalesListClient({
                   </table>
                 </div>
 
-                {/* 下部フッタバー（深紺 #242852 + ページネーション） */}
-                <div className="min-h-10 px-4 py-1.5 bg-gradient-to-r from-[#242852] via-[#374D81] to-[#242852] border-t-2 border-[#4A66AC] flex flex-wrap items-center justify-between gap-2 text-xs text-white shrink-0">
-                  <span className="text-[11px] text-[#D4E5F6] truncate">
+                {/* 下部フッタバー（#9999FF 濃色 #2B2B80〜#333399 + ページネーション） */}
+                <div className="min-h-10 px-4 py-1.5 bg-gradient-to-r from-[#2B2B80] via-[#333399] to-[#2B2B80] border-t-2 border-[#7878FF] flex flex-wrap items-center justify-between gap-2 text-xs text-white shrink-0">
+                  <span className="text-[11px] text-[#E6E6FF] truncate">
                     ※ 左の売上日別一覧で日付を選択すると表示伝票を絞り込めます。行または伝票Noクリックで編集画面を開きます。
                   </span>
                   <div className="flex items-center gap-2 font-mono shrink-0">
-                    <span className="text-[11px] text-[#D4E5F6]">
+                    <span className="text-[11px] text-[#E6E6FF]">
                       全 {pageData.summary.totalCount} 件（ページ {pageData.page} / {totalPages}）
                     </span>
                     <button
                       type="button"
                       disabled={pageData.page <= 1 || loading}
                       onClick={() => void loadSalesPage(currentEntryType, { page: pageData.page - 1 })}
-                      className="h-7 rounded-full border border-[#90A2CF] bg-[#4A66AC] hover:bg-[#5974B8] px-3 text-xs font-bold text-white disabled:opacity-40 cursor-pointer transition"
+                      className="h-7 rounded-full border border-[#CCCCFF]/70 bg-[#7878FF] hover:bg-[#9999FF] px-3 text-xs font-bold text-white disabled:opacity-40 cursor-pointer transition"
                     >
                       ◀ 前へ
                     </button>
@@ -1444,7 +1444,7 @@ export default function SalesListClient({
                       type="button"
                       disabled={pageData.page >= totalPages || loading}
                       onClick={() => void loadSalesPage(currentEntryType, { page: pageData.page + 1 })}
-                      className="h-7 rounded-full border border-[#90A2CF] bg-[#4A66AC] hover:bg-[#5974B8] px-3 text-xs font-bold text-white disabled:opacity-40 cursor-pointer transition"
+                      className="h-7 rounded-full border border-[#CCCCFF]/70 bg-[#7878FF] hover:bg-[#9999FF] px-3 text-xs font-bold text-white disabled:opacity-40 cursor-pointer transition"
                     >
                       次へ ▶
                     </button>
@@ -1455,48 +1455,48 @@ export default function SalesListClient({
           </>
         ) : (
           /* ========================================================= */
-          /* 商品別売上・立替集計タブ（同じ Vendas × cabacc スタイル） */
+          /* 商品別売上・立替集計タブ（#9999FF 基準濃淡 × cabacc スタイル） */
           /* ========================================================= */
           <div className="flex-1 min-h-[440px] flex flex-col space-y-3 lg:overflow-hidden">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 shrink-0">
-              <div className="bg-gradient-to-br from-[#121429] via-[#242852] to-[#374D81] rounded-xl px-4 py-3 text-white border-2 border-[#4A66AC] shadow-sm flex flex-col justify-between">
-                <div className="flex items-center justify-between text-xs font-bold text-[#D4E5F6]">
+              <div className="bg-gradient-to-br from-[#19194D] via-[#2B2B80] to-[#4747B3] rounded-xl px-4 py-3 text-white border-2 border-[#9999FF] shadow-sm flex flex-col justify-between">
+                <div className="flex items-center justify-between text-xs font-bold text-[#CCCCFF]">
                   <span>💰 税込金額合計</span>
-                  <span className="px-1.5 py-0.5 rounded bg-[#4A66AC]/40 text-[10px] font-mono">
+                  <span className="px-1.5 py-0.5 rounded bg-[#7878FF]/45 text-[10px] font-mono">
                     SUMMARY
                   </span>
                 </div>
                 <div className="mt-1.5 text-2xl font-black font-mono tabular-nums text-white">
                   {formatYen(summaryData.totals.inclAmount)}
                 </div>
-                <div className="mt-1 text-[11px] text-[#B5C1DF] font-mono">
+                <div className="mt-1 text-[11px] text-[#B3B3FF] font-mono">
                   集計品目: {summaryData.totals.rowCount} 件
                 </div>
               </div>
 
-              <div className="bg-white rounded-xl px-4 py-3 border-2 border-[#B5C1DF] text-[#242852] shadow-2xs flex flex-col justify-between">
-                <div className="text-xs font-bold text-[#3B528A]">📦 集計品目数</div>
-                <div className="mt-1.5 text-2xl font-black font-mono tabular-nums text-[#242852]">
+              <div className="bg-white rounded-xl px-4 py-3 border-2 border-[#B3B3FF] text-[#1F1F5C] shadow-2xs flex flex-col justify-between">
+                <div className="text-xs font-bold text-[#4D4DB3]">📦 集計品目数</div>
+                <div className="mt-1.5 text-2xl font-black font-mono tabular-nums text-[#1F1F5C]">
                   {summaryData.totals.rowCount}{' '}
-                  <span className="text-xs font-sans font-bold text-[#7F8FA9]">品目</span>
+                  <span className="text-xs font-sans font-bold text-[#666699]">品目</span>
                 </div>
-                <div className="mt-1 text-[11px] text-[#7F8FA9] font-mono">商品別グルーピング</div>
+                <div className="mt-1 text-[11px] text-[#666699] font-mono">商品別グルーピング</div>
               </div>
 
-              <div className="bg-white rounded-xl px-4 py-3 border-2 border-[#B5C1DF] text-[#242852] shadow-2xs flex flex-col justify-between">
-                <div className="text-xs font-bold text-[#3B528A]">💴 税抜金額合計</div>
-                <div className="mt-1.5 text-2xl font-black font-mono tabular-nums text-[#242852]">
+              <div className="bg-white rounded-xl px-4 py-3 border-2 border-[#B3B3FF] text-[#1F1F5C] shadow-2xs flex flex-col justify-between">
+                <div className="text-xs font-bold text-[#4D4DB3]">💴 税抜金額合計</div>
+                <div className="mt-1.5 text-2xl font-black font-mono tabular-nums text-[#1F1F5C]">
                   {formatYen(summaryData.totals.exclAmount)}
                 </div>
-                <div className="mt-1 text-[11px] text-[#7F8FA9] font-mono">純売上合計</div>
+                <div className="mt-1 text-[11px] text-[#666699] font-mono">純売上合計</div>
               </div>
 
-              <div className="bg-white rounded-xl px-4 py-3 border-2 border-[#B5C1DF] text-[#242852] shadow-2xs flex flex-col justify-between">
-                <div className="text-xs font-bold text-[#3B528A]">🧾 消費税額合計</div>
-                <div className="mt-1.5 text-2xl font-black font-mono tabular-nums text-[#242852]">
+              <div className="bg-white rounded-xl px-4 py-3 border-2 border-[#B3B3FF] text-[#1F1F5C] shadow-2xs flex flex-col justify-between">
+                <div className="text-xs font-bold text-[#4D4DB3]">🧾 消費税額合計</div>
+                <div className="mt-1.5 text-2xl font-black font-mono tabular-nums text-[#1F1F5C]">
                   {formatYen(summaryData.totals.taxAmount)}
                 </div>
-                <div className="mt-1 text-[11px] text-[#7F8FA9] font-mono">内訳税額合算</div>
+                <div className="mt-1 text-[11px] text-[#666699] font-mono">内訳税額合算</div>
               </div>
             </div>
 
@@ -1505,15 +1505,15 @@ export default function SalesListClient({
                 e.preventDefault();
                 void loadProductSummary();
               }}
-              className="relative bg-white pl-4 pr-3.5 py-2.5 rounded-xl border-2 border-[#90A2CF] shadow-2xs flex flex-wrap items-center justify-between gap-2.5 shrink-0"
+              className="relative bg-white pl-4 pr-3.5 py-2.5 rounded-xl border-2 border-[#9999FF] shadow-2xs flex flex-wrap items-center justify-between gap-2.5 shrink-0"
             >
-              <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-[#4A66AC] rounded-l-xl" />
+              <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-[#7878FF] rounded-l-xl" />
               <div className="flex flex-wrap items-center gap-2">
                 <select
                   aria-label="区分"
                   value={sumEntryFilter}
                   onChange={(e) => setSumEntryFilter(e.target.value as 'ALL' | SalesEntryType)}
-                  className="h-8 rounded-lg border border-[#90A2CF] bg-white px-2.5 text-xs font-semibold text-[#242852]"
+                  className="h-8 rounded-lg border border-[#9999FF] bg-white px-2.5 text-xs font-semibold text-[#1F1F5C]"
                 >
                   {lookups.salesEnabled && lookups.tatekaeEnabled && (
                     <option value="ALL">区分: すべて（売上＋立替）</option>
@@ -1526,7 +1526,7 @@ export default function SalesListClient({
                   aria-label="取引先"
                   value={sumPartnerId}
                   onChange={(e) => setSumPartnerId(e.target.value)}
-                  className="h-8 rounded-lg border border-[#90A2CF] bg-white px-2.5 text-xs font-semibold text-[#242852] max-w-[220px]"
+                  className="h-8 rounded-lg border border-[#9999FF] bg-white px-2.5 text-xs font-semibold text-[#1F1F5C] max-w-[220px]"
                 >
                   <option value="">すべての取引先</option>
                   {lookups.partners.map((p) => (
@@ -1542,15 +1542,15 @@ export default function SalesListClient({
                     type="date"
                     value={sumDateFrom}
                     onChange={(e) => setSumDateFrom(e.target.value)}
-                    className="h-8 rounded-lg border border-[#90A2CF] px-2 text-xs font-mono text-[#242852] bg-white"
+                    className="h-8 rounded-lg border border-[#9999FF] px-2 text-xs font-mono text-[#1F1F5C] bg-white"
                   />
-                  <span className="text-xs text-[#7F8FA9]">〜</span>
+                  <span className="text-xs text-[#666699]">〜</span>
                   <input
                     aria-label="集計期間To"
                     type="date"
                     value={sumDateTo}
                     onChange={(e) => setSumDateTo(e.target.value)}
-                    className="h-8 rounded-lg border border-[#90A2CF] px-2 text-xs font-mono text-[#242852] bg-white"
+                    className="h-8 rounded-lg border border-[#9999FF] px-2 text-xs font-mono text-[#1F1F5C] bg-white"
                   />
                 </div>
 
@@ -1559,13 +1559,13 @@ export default function SalesListClient({
                   value={sumKeyword}
                   onChange={(e) => setSumKeyword(e.target.value)}
                   placeholder="品名・商品コード検索..."
-                  className="h-8 w-52 rounded-lg border border-[#90A2CF] px-3 text-xs font-semibold text-[#242852] placeholder:text-[#7F8FA9]"
+                  className="h-8 w-52 rounded-lg border border-[#9999FF] px-3 text-xs font-semibold text-[#1F1F5C] placeholder:text-[#666699]"
                 />
 
                 <button
                   type="submit"
                   disabled={loading}
-                  className="h-8 px-4 rounded-full bg-gradient-to-b from-[#C00000] to-[#9A0000] hover:from-[#d90000] hover:to-[#C00000] text-white border border-[#9A0000] text-xs font-bold shadow-xs cursor-pointer"
+                  className="h-8 px-4 rounded-full bg-gradient-to-b from-[#5C5CD6] to-[#333399] hover:from-[#7878FF] hover:to-[#4747B3] text-white border border-[#242466] text-xs font-bold shadow-xs cursor-pointer"
                 >
                   {loading ? '集計中...' : '集計実行'}
                 </button>
@@ -1573,21 +1573,21 @@ export default function SalesListClient({
                   type="button"
                   onClick={handleResetSummaryFilters}
                   disabled={loading}
-                  className="h-8 px-3.5 rounded-full bg-gradient-to-b from-[#4A66AC] to-[#3B528A] text-white border border-[#3B528A] text-xs font-bold shadow-2xs cursor-pointer"
+                  className="h-8 px-3.5 rounded-full bg-gradient-to-b from-white via-[#F0F0FF] to-[#CCCCFF] hover:to-[#B3B3FF] text-[#333399] border border-[#9999FF] text-xs font-bold shadow-2xs cursor-pointer"
                 >
                   クリア
                 </button>
               </div>
-              <span className="px-2.5 py-1 rounded-md text-[11px] font-mono font-black bg-[#D4E5F6] text-[#242852] border border-[#4A66AC]">
+              <span className="px-2.5 py-1 rounded-md text-[11px] font-mono font-black bg-[#CCCCFF] text-[#1F1F5C] border border-[#7878FF]">
                 計 {summaryData.totals.rowCount} 品目
               </span>
             </form>
 
-            <div className="flex-1 min-h-0 bg-white rounded-xl border-2 border-[#4A66AC]/80 shadow-2xs overflow-hidden flex flex-col">
+            <div className="flex-1 min-h-0 bg-white rounded-xl border-2 border-[#9999FF] shadow-2xs overflow-hidden flex flex-col">
               <div className="flex-1 min-h-0 overflow-auto">
                 <table className="w-full h-full min-w-[920px] text-left border-collapse text-xs">
                   <thead className="sticky top-0 z-20">
-                    <tr className="h-9 bg-gradient-to-r from-[#D4E5F6] via-[#E4EFFA] to-[#D4E5F6] border-b-2 border-[#4A66AC] text-[#242852] font-black text-xs select-none">
+                    <tr className="h-9 bg-gradient-to-r from-[#CCCCFF] via-[#DDDDFF] to-[#CCCCFF] border-b-2 border-[#7878FF] text-[#1F1F5C] font-black text-xs select-none">
                       <th className="h-9 px-3 text-center whitespace-nowrap">区分</th>
                       <th className="h-9 px-3 text-left whitespace-nowrap">商品コード</th>
                       <th className="h-9 px-3 text-left whitespace-nowrap">品名・仕様</th>
@@ -1600,10 +1600,10 @@ export default function SalesListClient({
                       <th className="h-9 px-3 text-right whitespace-nowrap">税込金額</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-[#D0D7D9]">
+                  <tbody className="divide-y divide-[#D6D6FF]">
                     {summaryData.items.length === 0 ? (
                       <tr>
-                        <td colSpan={10} className="px-4 py-14 text-center text-sm text-[#7F8FA9] bg-white">
+                        <td colSpan={10} className="px-4 py-14 text-center text-sm text-[#666699] bg-white">
                           該当する集計データがありません。条件を指定して「集計実行」を押してください。
                         </td>
                       </tr>
@@ -1612,44 +1612,44 @@ export default function SalesListClient({
                         {summaryData.items.map((row, idx) => (
                           <tr
                             key={`${row.entryType}-${row.itemName}-${row.taxCode}-${idx}`}
-                            className={`h-9 ${idx % 2 === 0 ? 'bg-white' : 'bg-[#F0F3F9]/75'} hover:bg-[#DDEAF8]/90 transition-colors`}
+                            className={`h-9 ${idx % 2 === 0 ? 'bg-white' : 'bg-[#F5F5FF]'} hover:bg-[#D6D6FF]/65 transition-colors`}
                           >
                             <td className="h-9 px-3 text-center whitespace-nowrap">
                               <span
                                 className={`inline-flex px-2 py-0.5 rounded-full text-[11px] font-bold border ${
                                   row.entryType === 'ADVANCE'
-                                    ? 'bg-[#F3E8FF] text-[#6B21A8] border-[#9454C3]/40'
-                                    : 'bg-[#D4E5F6] text-[#242852] border-[#4A66AC]/50'
+                                    ? 'bg-[#C2C2FF] text-[#19194D] border-[#7878FF]'
+                                    : 'bg-[#E6E6FF] text-[#333399] border-[#9999FF]'
                                 }`}
                               >
                                 {ENTRY_TYPE_LABELS[row.entryType]}
                               </span>
                             </td>
-                            <td className="h-9 px-3 font-mono text-xs text-[#5F718E] whitespace-nowrap">
+                            <td className="h-9 px-3 font-mono text-xs text-[#4D4DB3] whitespace-nowrap">
                               {row.itemCode !== null ? row.itemCode : '-'}
                             </td>
-                            <td className="h-9 px-3 text-[#242852] font-bold whitespace-pre-line">
+                            <td className="h-9 px-3 text-[#1F1F5C] font-bold whitespace-pre-line">
                               {row.itemName}
                             </td>
-                            <td className="h-9 px-3 text-center text-xs text-[#40485C] whitespace-nowrap">
+                            <td className="h-9 px-3 text-center text-xs text-[#333366] whitespace-nowrap">
                               {row.unitName !== null ? row.unitName : '-'}
                             </td>
-                            <td className="h-9 px-3 text-center font-mono text-xs text-[#242852]">
+                            <td className="h-9 px-3 text-center font-mono text-xs text-[#1F1F5C]">
                               {row.taxCode}
                             </td>
-                            <td className="h-9 px-3 text-right font-mono tabular-nums text-xs text-[#242852]">
+                            <td className="h-9 px-3 text-right font-mono tabular-nums text-xs text-[#1F1F5C]">
                               {row.slipCount}
                             </td>
-                            <td className="h-9 px-3 text-right font-mono tabular-nums text-xs text-[#242852]">
+                            <td className="h-9 px-3 text-right font-mono tabular-nums text-xs text-[#1F1F5C]">
                               {formatQty(row.totalQuantity)}
                             </td>
-                            <td className="h-9 px-3 text-right font-mono tabular-nums text-xs text-[#40485C]">
+                            <td className="h-9 px-3 text-right font-mono tabular-nums text-xs text-[#333366]">
                               {formatYen(row.exclAmount)}
                             </td>
-                            <td className="h-9 px-3 text-right font-mono tabular-nums text-xs text-[#5F718E]">
+                            <td className="h-9 px-3 text-right font-mono tabular-nums text-xs text-[#4D4DB3]">
                               {formatYen(row.taxAmount)}
                             </td>
-                            <td className="h-9 px-3 text-right font-mono tabular-nums text-xs font-black text-[#242852]">
+                            <td className="h-9 px-3 text-right font-mono tabular-nums text-xs font-black text-[#19194D]">
                               {formatYen(row.inclAmount)}
                             </td>
                           </tr>
@@ -1661,28 +1661,28 @@ export default function SalesListClient({
                     )}
                   </tbody>
                   <tfoot className="sticky bottom-0 z-20">
-                    <tr className="h-9 bg-gradient-to-r from-[#B5C1DF] via-[#CBD4E9] to-[#B5C1DF] font-black text-[#242852] border-t-2 border-[#4A66AC] text-xs">
+                    <tr className="h-9 bg-gradient-to-r from-[#C2C2FF] via-[#D6D6FF] to-[#C2C2FF] font-black text-[#1F1F5C] border-t-2 border-[#7878FF] text-xs">
                       <td colSpan={7} className="h-9 px-3 text-left font-bold">
                         商品別集計合計（全 {summaryData.totals.rowCount} 品目）
                       </td>
                       <td className="h-9 px-3 text-right font-mono tabular-nums">
                         {formatYen(summaryData.totals.exclAmount)}
                       </td>
-                      <td className="h-9 px-3 text-right font-mono tabular-nums text-[#3B528A]">
+                      <td className="h-9 px-3 text-right font-mono tabular-nums text-[#333399]">
                         {formatYen(summaryData.totals.taxAmount)}
                       </td>
-                      <td className="h-9 px-3 text-right font-mono tabular-nums font-black text-[#121429]">
+                      <td className="h-9 px-3 text-right font-mono tabular-nums font-black text-[#19194D]">
                         {formatYen(summaryData.totals.inclAmount)}
                       </td>
                     </tr>
                   </tfoot>
                 </table>
               </div>
-              <div className="h-9 px-4 bg-gradient-to-r from-[#242852] via-[#374D81] to-[#242852] border-t-2 border-[#4A66AC] flex items-center justify-between text-xs text-white shrink-0">
-                <span className="text-[11px] text-[#D4E5F6]">
+              <div className="h-9 px-4 bg-gradient-to-r from-[#2B2B80] via-[#333399] to-[#2B2B80] border-t-2 border-[#7878FF] flex items-center justify-between text-xs text-white shrink-0">
+                <span className="text-[11px] text-[#E6E6FF]">
                   ※ 条件を指定して「集計実行」を押すと、売上・立替伝票の商品別集計が表示されます。
                 </span>
-                <span className="font-mono text-[11px] text-[#D4E5F6]">
+                <span className="font-mono text-[11px] text-[#E6E6FF]">
                   表示中: {summaryData.totals.rowCount} 品目
                 </span>
               </div>

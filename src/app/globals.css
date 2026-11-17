@@ -1,1 +1,45 @@
 @import "tailwindcss";
+
+/* =========================================================================
+   数字専用スケーリングフォント定義（cabacc同一仕様）:
+   unicode-range で数字（0-9）および金額・日付記号のみを対象として 125%（二回り）拡大。
+   漢字・ひらがな・カタカナ・アルファベットの文字サイズは元のまま維持される。
+   ========================================================================= */
+@font-face {
+  font-family: 'CabaccNumbers';
+  src: local('Consolas'), local('Cascadia Mono'), local('Cascadia Code'), monospace;
+  unicode-range: U+0030-0039, U+002C, U+002E, U+00A5, U+002D, U+002F, U+003A, U+0025, U+002B; /* 0-9 , . ¥ - / : % + */
+  size-adjust: 125%;
+}
+
+@theme {
+  --font-sans: "CabaccNumbers", Consolas, "Cascadia Mono", "Cascadia Code", "BIZ UDPGothic", "Meiryo", "Yu Gothic UI", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif;
+  --font-mono: "CabaccNumbers", Consolas, "Cascadia Mono", "Cascadia Code", "BIZ UDGothic", "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", ui-monospace, monospace;
+}
+
+@layer base {
+  body {
+    font-family: var(--font-sans);
+    font-feature-settings: "zero" 1, "ss19" 1, "tnum" 1;
+    font-variant-numeric: slashed-zero tabular-nums;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* 入力欄やテーブル数値の視認性と等幅・スラッシュゼロを完全保証 */
+  input, select, textarea, button, table {
+    font-feature-settings: "zero" 1, "ss19" 1, "tnum" 1;
+    font-variant-numeric: slashed-zero tabular-nums;
+  }
+}
+
+@layer utilities {
+  /* スラッシュゼロ・等幅数字・数字25%拡大を完全保証する mono スタイル */
+  .font-mono {
+    font-family: "CabaccNumbers", Consolas, "Cascadia Mono", "Cascadia Code", "BIZ UDGothic", "BIZ UDPGothic", "Hiragino Kaku Gothic ProN", "Hiragino Sans", ui-monospace, sans-serif !important;
+    font-variant-numeric: slashed-zero tabular-nums !important;
+    font-feature-settings: "zero" 1, "ss19" 1, "tnum" 1 !important;
+    letter-spacing: 0.02em;
+  }
+}

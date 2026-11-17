@@ -775,11 +775,11 @@ export default function SalesListClient({
               </button>
             </div>
 
-            <div className="flex-1 min-h-0 overflow-y-auto p-1.5 space-y-1">
+            <div className="flex-1 min-h-0 flex flex-col p-1.5 gap-1 overflow-y-auto lg:overflow-hidden">
               <button
                 type="button"
                 onClick={() => setSelectedMonth(null)}
-                className={`w-full text-left p-2 rounded-lg transition border-2 flex flex-col justify-between cursor-pointer ${
+                className={`w-full shrink-0 text-left px-2.5 py-1.5 rounded-lg transition border-2 flex flex-col justify-between cursor-pointer ${
                   selectedMonth === null
                     ? 'bg-[#CCCCFF]/85 border-[#7878FF] shadow-xs'
                     : 'bg-[#F5F5FF] border-[#CCCCFF] hover:bg-[#E6E6FF] hover:border-[#9999FF]'
@@ -805,7 +805,7 @@ export default function SalesListClient({
                 </div>
               </button>
 
-              <div className="border-t border-[#D6D6FF] pt-1 space-y-1">
+              <div className="flex-1 min-h-0 border-t border-[#D6D6FF] pt-1 grid grid-rows-12 gap-0.5">
                 {monthlyBuckets.map((bucket) => {
                   const isSelected = selectedMonth === bucket.month;
                   const isEmpty = bucket.count === 0;
@@ -819,7 +819,7 @@ export default function SalesListClient({
                         )
                       }
                       title={`${selectedYear}年${bucket.label} の伝票を表示`}
-                      className={`w-full text-left px-2 py-1.5 rounded-lg transition border flex items-center justify-between gap-1.5 cursor-pointer ${
+                      className={`w-full h-full min-h-[26px] text-left px-2.5 py-0.5 rounded-md transition border flex items-center justify-between gap-1.5 cursor-pointer ${
                         isSelected
                           ? 'bg-[#CCCCFF]/80 border-[#7878FF] shadow-2xs ring-1 ring-[#7878FF]/40'
                           : isEmpty
@@ -871,15 +871,6 @@ export default function SalesListClient({
                   );
                 })}
               </div>
-            </div>
-
-            <div className="p-2 border-t-2 border-[#7878FF] bg-gradient-to-r from-[#C2C2FF] via-[#D6D6FF] to-[#C2C2FF] text-xs font-mono flex items-center justify-between shrink-0 text-[#1F1F5C]">
-              <span className="text-[10px] font-sans font-bold truncate">
-                {periodScopeLabel}（{displayedItems.length}件）
-              </span>
-              <span className="font-black text-xs tabular-nums shrink-0 whitespace-nowrap">
-                {formatAmount(annualSummary.totalAmount)}
-              </span>
             </div>
           </aside>
 

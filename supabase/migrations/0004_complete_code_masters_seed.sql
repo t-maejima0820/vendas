@@ -1,0 +1,218 @@
+-- ============================================================================
+-- 販売管理ヴェンダス（Vendas Web）汎用区分マスタ全16ドメイン正本化マイグレーション
+-- (0004_complete_code_masters_seed.sql)
+-- Phase 1-C: 未シード8ドメイン（COLLECT_DAY, PAYROLL_CLOSE, PAYROLL_PAY, LABOR_INS,
+--   SOCIAL_INS, INCOME_TAX, CONSUMPTION_TAX, RESIDENT_TAX）52行を追加し計105行へ統一
+-- ============================================================================
+
+CREATE OR REPLACE FUNCTION seed_tenant_defaults(p_tenant_id uuid) RETURNS void
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  -- 1. M_FunctionAuthority (29機能) デフォルトシード
+  INSERT INTO tenant_feature_authorities (tenant_id, feature_code, feature_name, is_enabled, display_order, is_fixed) VALUES
+    (p_tenant_id, 'estimate',          '見積',             true,  130, false),
+    (p_tenant_id, 'sales',             '売上',             true,  100, true),
+    (p_tenant_id, 'tatekae',           '立替金',           false, 910, false),
+    (p_tenant_id, 'billsummary',       '請求データ集計',   true,  110, true),
+    (p_tenant_id, 'billissue',         '請求書発行',       true,  120, true),
+    (p_tenant_id, 'fixedbill',         '定額請求書発行',   false, 920, false),
+    (p_tenant_id, 'receivable',        '売掛',             true,  140, false),
+    (p_tenant_id, 'aplus',             'アプラス',         false, 930, false),
+    (p_tenant_id, 'construction',      '案件',             true,  200, false),
+    (p_tenant_id, 'purchase',          '仕入',             true,  310, false),
+    (p_tenant_id, 'stock',             '在庫',             false, 340, false),
+    (p_tenant_id, 'payable',           '買掛',             true,  320, false),
+    (p_tenant_id, 'deposit',           '入金',             true,  150, false),
+    (p_tenant_id, 'payment',           '支払',             true,  330, false),
+    (p_tenant_id, 'teams',             'Teams連携',        false, 950, false),
+    (p_tenant_id, 'cost',              '原価',             true,  270, false),
+    (p_tenant_id, 'custom-sum-item',   '商品別売上集計',   false, 940, false),
+    (p_tenant_id, 'order',             '発注',             true,  300, false),
+    (p_tenant_id, 'mail',              'メール',           false, 710, false),
+    (p_tenant_id, 'item',              '項目',             false, 700, false),
+    (p_tenant_id, 'estimateimage',     '見積画像',         true,  610, false),
+    (p_tenant_id, 'constructionimage', '案件画像',         false, 600, false),
+    (p_tenant_id, 'expense',           '経費',             true,  210, false),
+    (p_tenant_id, 'labor',             '労務費',           true,  220, false),
+    (p_tenant_id, 'material',          '材料費',           true,  230, false),
+    (p_tenant_id, 'outsourcing',       '外注費',           true,  240, false),
+    (p_tenant_id, 'temporary',         '共通仮設費',       false, 250, false),
+    (p_tenant_id, 'indirect',          '間接費',           false, 260, false),
+    (p_tenant_id, 'budget',            '実行予算',         true,  280, false)
+  ON CONFLICT (tenant_id, feature_code) DO NOTHING;
+
+  -- 2. ti_Zei (5税区分)
+  INSERT INTO tax_codes (tenant_id, tax_code, tax_name, tax_rate, mark_symbol, is_internal) VALUES
+    (p_tenant_id, 'A', '標準税率',   0.1000, '.',  false),
+    (p_tenant_id, 'B', '軽減税率',   0.0800, '※', false),
+    (p_tenant_id, 'C', '非課税',     0.0000, '非', false),
+    (p_tenant_id, 'D', '内税（標）', 0.1000, '内', true),
+    (p_tenant_id, 'E', '内税（軽）', 0.0800, '内', true)
+  ON CONFLICT (tenant_id, tax_code) DO NOTHING;
+
+  -- 3. ti_Payment (9支払方法)
+  INSERT INTO payment_methods (tenant_id, method_code, method_name) VALUES
+    (p_tenant_id, 'A', '-'),
+    (p_tenant_id, 'B', '現金'),
+    (p_tenant_id, 'C', '小切手'),
+    (p_tenant_id, 'D', '振込'),
+    (p_tenant_id, 'E', '手形'),
+    (p_tenant_id, 'F', '相殺'),
+    (p_tenant_id, 'G', '振込手数料'),
+    (p_tenant_id, 'H', 'アプラス'),
+    (p_tenant_id, 'I', 'その他')
+  ON CONFLICT (tenant_id, method_code) DO NOTHING;
+
+  -- 4. ti_Tani (25単位)
+  INSERT INTO units (tenant_id, unit_code, unit_name, conversion_name, conversion_ratio, display_order) VALUES
+    (p_tenant_id, 'A',  '-',      '-',    1,       0),
+    (p_tenant_id, 'hm', '人工',   NULL,   0,       1),
+    (p_tenant_id, 'm2', '㎡',     NULL,   0,       2),
+    (p_tenant_id, 'B',  '式',     '式',   1,       3),
+    (p_tenant_id, 'BX', '箱',     '箱',   1,       99999),
+    (p_tenant_id, 'C',  '台',     '台',   1,       99999),
+    (p_tenant_id, 'cm', 'cm',     'cm',   1,       99999),
+    (p_tenant_id, 'D',  '時間',   '時間', 1,       99999),
+    (p_tenant_id, 'E',  '日',     '日',   1,       99999),
+    (p_tenant_id, 'F',  '個',     '個',   1,       99999),
+    (p_tenant_id, 'g',  'g',      'g',    1,       99999),
+    (p_tenant_id, 'H',  '人',     '人',   1,       99999),
+    (p_tenant_id, 'HN', '本',     '本',   1,       99999),
+    (p_tenant_id, 'HU', '袋',     '袋',   1,       99999),
+    (p_tenant_id, 'I',  '枚',     '枚',   1,       99999),
+    (p_tenant_id, 'kg', 'kg',     'g',    1000,    99999),
+    (p_tenant_id, 'L',  'L',      'mL',   1000,    99999),
+    (p_tenant_id, 'ｍ', 'ｍ',     'cm',   100,     99999),
+    (p_tenant_id, 'mL', 'mL',     'mL',   1,       99999),
+    (p_tenant_id, 'mm', 'mm',     'mm',   1,       99999),
+    (p_tenant_id, 'PK', 'pack',   'pack', 1,       99999),
+    (p_tenant_id, 'ｔ', 'ｔ',     'g',    1000000, 99999),
+    (p_tenant_id, 'mt', '月',     NULL,   0,       99999),
+    (p_tenant_id, 'lu', '食',     NULL,   0,       99999),
+    (p_tenant_id, 'st', 'セット', NULL,   0,       99999)
+  ON CONFLICT (tenant_id, unit_code) DO NOTHING;
+
+  -- 5. 旧 ti_* 区分マスタ 全16ドメイン (105行)
+  INSERT INTO code_masters (tenant_id, domain_key, code, name, is_active, display_order) VALUES
+    (p_tenant_id, 'CATEGORY', '1', '個人宅',   true, 1),
+    (p_tenant_id, 'CATEGORY', '2', '社屋',     true, 2),
+    (p_tenant_id, 'CATEGORY', '3', '公共機関', true, 3),
+    (p_tenant_id, 'CATEGORY', '4', '仕入',     true, 4),
+    (p_tenant_id, 'CATEGORY', '5', '外注',     true, 5),
+    (p_tenant_id, 'CATEGORY', '6', '受注',     true, 6),
+    (p_tenant_id, 'ITEM_CLASS', '0',  '分類ナシ',   true,  0),
+    (p_tenant_id, 'ITEM_CLASS', '1',  '経費',       true,  1),
+    (p_tenant_id, 'ITEM_CLASS', '2',  '労務費',     true,  2),
+    (p_tenant_id, 'ITEM_CLASS', '3',  '材料費',     true,  3),
+    (p_tenant_id, 'ITEM_CLASS', '4',  '外注費',     true,  4),
+    (p_tenant_id, 'ITEM_CLASS', '5',  '請求',       true,  5),
+    (p_tenant_id, 'ITEM_CLASS', '6',  '共通仮設費', false, 6),
+    (p_tenant_id, 'ITEM_CLASS', '7',  '間接費',     false, 7),
+    (p_tenant_id, 'ITEM_CLASS', '10', '仕入',       true,  10),
+    (p_tenant_id, 'BILL_CLOSE', 'A', '-',    true, 1),
+    (p_tenant_id, 'BILL_CLOSE', 'B', '10日', true, 2),
+    (p_tenant_id, 'BILL_CLOSE', 'C', '20日', true, 3),
+    (p_tenant_id, 'BILL_CLOSE', 'D', '月末', true, 4),
+    (p_tenant_id, 'PARTNER_STATE', 'A', '-',      true, 1),
+    (p_tenant_id, 'PARTNER_STATE', 'B', '継続',   true, 2),
+    (p_tenant_id, 'PARTNER_STATE', 'C', '解約',   true, 3),
+    (p_tenant_id, 'PARTNER_STATE', 'D', '廃業',   true, 4),
+    (p_tenant_id, 'PARTNER_STATE', 'E', '法人成', true, 5),
+    (p_tenant_id, 'PARTNER_STATE', 'F', '未契約', true, 6),
+    (p_tenant_id, 'PARTNER_STATE', 'G', '異動',   true, 7),
+    (p_tenant_id, 'PARTNER_STATE', 'H', 'その他', true, 8),
+    (p_tenant_id, 'OTHER', 'B1', '普通', true, 1),
+    (p_tenant_id, 'OTHER', 'B2', '当座', true, 2),
+    (p_tenant_id, 'OTHER', 'S1', '男性', true, 3),
+    (p_tenant_id, 'OTHER', 'S2', '女性', true, 4),
+    (p_tenant_id, 'ORDER_KIND', '1', '戸建て',     true, 1),
+    (p_tenant_id, 'ORDER_KIND', '2', '社屋',       true, 2),
+    (p_tenant_id, 'ORDER_KIND', '3', 'リフォーム', true, 3),
+    (p_tenant_id, 'ORDER_KIND', '4', '公共機関',   true, 4),
+    (p_tenant_id, 'PROJECT_SUB_STATUS', '1', '完成',   true, 1),
+    (p_tenant_id, 'PROJECT_SUB_STATUS', '2', '仕掛中', true, 2),
+    (p_tenant_id, 'MONTH_FLG', 'A',  '設定なし', true, 1),
+    (p_tenant_id, 'MONTH_FLG', 'B',  '今月',     true, 2),
+    (p_tenant_id, 'MONTH_FLG', 'C',  '来月',     true, 3),
+    (p_tenant_id, 'MONTH_FLG', 'D',  '前月',     true, 4),
+    (p_tenant_id, 'MONTH_FLG', 'A1', '1月',      true, 11),
+    (p_tenant_id, 'MONTH_FLG', 'A2', '2月',      true, 12),
+    (p_tenant_id, 'MONTH_FLG', 'A3', '3月',      true, 13),
+    (p_tenant_id, 'MONTH_FLG', 'A4', '4月',      true, 14),
+    (p_tenant_id, 'MONTH_FLG', 'A5', '5月',      true, 15),
+    (p_tenant_id, 'MONTH_FLG', 'A6', '6月',      true, 16),
+    (p_tenant_id, 'MONTH_FLG', 'A7', '7月',      true, 17),
+    (p_tenant_id, 'MONTH_FLG', 'A8', '8月',      true, 18),
+    (p_tenant_id, 'MONTH_FLG', 'A9', '9月',      true, 19),
+    (p_tenant_id, 'MONTH_FLG', 'AA', '10月',     true, 20),
+    (p_tenant_id, 'MONTH_FLG', 'AB', '11月',     true, 21),
+    (p_tenant_id, 'MONTH_FLG', 'AC', '12月',     true, 22),
+    (p_tenant_id, 'COLLECT_DAY', '1', 'A', true, 1),
+    (p_tenant_id, 'COLLECT_DAY', '2', 'C', true, 2),
+    (p_tenant_id, 'PAYROLL_CLOSE', 'A', '-',      true, 1),
+    (p_tenant_id, 'PAYROLL_CLOSE', 'B', '15日',   true, 2),
+    (p_tenant_id, 'PAYROLL_CLOSE', 'C', '20日',   true, 3),
+    (p_tenant_id, 'PAYROLL_CLOSE', 'D', '25日',   true, 4),
+    (p_tenant_id, 'PAYROLL_CLOSE', 'E', '末日',   true, 5),
+    (p_tenant_id, 'PAYROLL_CLOSE', 'F', '翌10日', true, 6),
+    (p_tenant_id, 'PAYROLL_CLOSE', 'G', '翌末日', true, 7),
+    (p_tenant_id, 'PAYROLL_PAY', 'A', '-',      true, 1),
+    (p_tenant_id, 'PAYROLL_PAY', 'B', '15日',   true, 2),
+    (p_tenant_id, 'PAYROLL_PAY', 'C', '20日',   true, 3),
+    (p_tenant_id, 'PAYROLL_PAY', 'D', '25日',   true, 4),
+    (p_tenant_id, 'PAYROLL_PAY', 'E', '末日',   true, 5),
+    (p_tenant_id, 'PAYROLL_PAY', 'F', '翌10日', true, 6),
+    (p_tenant_id, 'PAYROLL_PAY', 'G', '翌末日', true, 7),
+    (p_tenant_id, 'PAYROLL_PAY', 'H', '5日',    true, 8),
+    (p_tenant_id, 'PAYROLL_PAY', 'I', '翌28日', true, 9),
+    (p_tenant_id, 'LABOR_INS', 'A', '-',        true, 1),
+    (p_tenant_id, 'LABOR_INS', 'B', '加入',     true, 2),
+    (p_tenant_id, 'LABOR_INS', 'C', '組合',     true, 3),
+    (p_tenant_id, 'LABOR_INS', 'D', '労災のみ', true, 4),
+    (p_tenant_id, 'LABOR_INS', 'E', '社労士',   true, 5),
+    (p_tenant_id, 'LABOR_INS', 'F', '本人',     true, 6),
+    (p_tenant_id, 'LABOR_INS', 'G', '未加入',   true, 7),
+    (p_tenant_id, 'LABOR_INS', 'H', '未確認',   true, 8),
+    (p_tenant_id, 'SOCIAL_INS', 'A', '-',      true, 1),
+    (p_tenant_id, 'SOCIAL_INS', 'B', '加入',   true, 2),
+    (p_tenant_id, 'SOCIAL_INS', 'C', '社労士', true, 3),
+    (p_tenant_id, 'SOCIAL_INS', 'D', '本人',   true, 4),
+    (p_tenant_id, 'SOCIAL_INS', 'E', '未加入', true, 5),
+    (p_tenant_id, 'SOCIAL_INS', 'F', '未確認', true, 6),
+    (p_tenant_id, 'INCOME_TAX', 'A', '-',        true, 1),
+    (p_tenant_id, 'INCOME_TAX', 'B', '原則',     true, 2),
+    (p_tenant_id, 'INCOME_TAX', 'C', '納特',     true, 3),
+    (p_tenant_id, 'INCOME_TAX', 'D', '確定申告', true, 4),
+    (p_tenant_id, 'INCOME_TAX', 'E', '未確認',   true, 5),
+    (p_tenant_id, 'CONSUMPTION_TAX', 'A', '-',        true, 1),
+    (p_tenant_id, 'CONSUMPTION_TAX', 'B', '本則',     true, 2),
+    (p_tenant_id, 'CONSUMPTION_TAX', 'C', '簡易１',   true, 3),
+    (p_tenant_id, 'CONSUMPTION_TAX', 'D', '簡易２',   true, 4),
+    (p_tenant_id, 'CONSUMPTION_TAX', 'E', '簡易３',   true, 5),
+    (p_tenant_id, 'CONSUMPTION_TAX', 'F', '簡易４',   true, 6),
+    (p_tenant_id, 'CONSUMPTION_TAX', 'G', '簡易５',   true, 7),
+    (p_tenant_id, 'CONSUMPTION_TAX', 'H', '簡易６',   true, 8),
+    (p_tenant_id, 'CONSUMPTION_TAX', 'I', '２割特例', true, 9),
+    (p_tenant_id, 'CONSUMPTION_TAX', 'J', '免税',     true, 10),
+    (p_tenant_id, 'CONSUMPTION_TAX', 'K', '未確認',   true, 11),
+    (p_tenant_id, 'RESIDENT_TAX', 'A', '-',        true, 1),
+    (p_tenant_id, 'RESIDENT_TAX', 'B', '特別徴収', true, 2),
+    (p_tenant_id, 'RESIDENT_TAX', 'C', '普通徴収', true, 3),
+    (p_tenant_id, 'RESIDENT_TAX', 'D', '未確認',   true, 4)
+  ON CONFLICT (tenant_id, domain_key, code) DO NOTHING;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION seed_tenant_defaults(uuid) TO vendas_app;
+
+-- 既存全テナント（dev-sandbox含む）へ不足分52行を冪等補完
+DO $$
+DECLARE
+  r record;
+BEGIN
+  FOR r IN SELECT id FROM tenants LOOP
+    PERFORM seed_tenant_defaults(r.id);
+  END LOOP;
+END;
+$$;

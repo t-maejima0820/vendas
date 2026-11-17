@@ -1,0 +1,39 @@
+{
+  "name": "vendas-web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "npm run check:stealth && next build",
+    "start": "next start",
+    "check:stealth": "node scripts/check-no-fallback.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "db:migrate": "tsx --env-file=.env.local scripts/db/migrate.ts",
+    "db:verify-live": "tsx --env-file=.env.local scripts/db/verify-live-supabase.ts",
+    "etl": "tsx --env-file=.env.local scripts/etl/migrate-tenant.ts"
+  },
+  "dependencies": {
+    "@pdf-lib/fontkit": "^1.1.1",
+    "@supabase/supabase-js": "^2.49.1",
+    "decimal.js": "^10.5.0",
+    "next": "^15.3.0",
+    "pdf-lib": "^1.17.1",
+    "pg": "^8.14.1",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.2.17",
+    "@tailwindcss/postcss": "^4.3.5",
+    "@types/node": "^22.14.0",
+    "@types/pg": "^8.11.11",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "postcss": "^8.5.33",
+    "tailwindcss": "^4.3.5",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2",
+    "vitest": "^3.1.1"
+  }
+}

@@ -749,7 +749,7 @@ export default function SalesListClient({
         {/* ========================================================= */}
         <div className="flex-1 min-h-[440px] flex flex-col lg:flex-row gap-3 lg:overflow-hidden">
           {/* 1. 左サイドバー: 売上月別一覧 */}
-          <aside className="w-full lg:w-56 bg-white rounded-xl border-2 border-[#9999FF] shadow-2xs flex flex-col shrink-0 overflow-hidden max-h-72 lg:max-h-none lg:h-full">
+          <aside className="w-full lg:w-[300px] bg-white rounded-xl border-2 border-[#9999FF] shadow-2xs flex flex-col shrink-0 overflow-hidden max-h-72 lg:max-h-none lg:h-full">
             <div className="h-10 bg-gradient-to-r from-[#2B2B80] via-[#333399] to-[#2B2B80] border-b border-[#19194D] px-2 flex items-center justify-between shrink-0 gap-1">
               <button
                 type="button"
@@ -786,20 +786,20 @@ export default function SalesListClient({
                 }`}
               >
                 <div className="flex items-center justify-between gap-1">
-                  <span className="font-black text-xs text-[#1F1F5C]">
+                  <span className="font-black text-xs text-[#1F1F5C] whitespace-nowrap">
                     📊 {selectedYear}年 通年合計
                   </span>
-                  <span className="px-2 py-0.5 rounded-full font-mono text-[10px] font-black bg-[#333399] text-white shrink-0">
+                  <span className="px-2 py-0.5 rounded-full font-mono text-[10px] font-black bg-[#333399] text-white shrink-0 whitespace-nowrap">
                     全 {annualSummary.count}件
                   </span>
                 </div>
                 <div className="mt-1 flex items-center justify-between text-[11px] font-mono">
-                  <span className="text-[10px] font-sans font-bold text-[#4D4DB3]">
+                  <span className="text-[10px] font-sans font-bold text-[#4D4DB3] whitespace-nowrap">
                     {annualSummary.pendingCount > 0
                       ? `未承認 ${annualSummary.pendingCount}件`
                       : `承認済 ${annualSummary.approvedCount}件`}
                   </span>
-                  <span className="font-black text-xs text-[#19194D] tabular-nums">
+                  <span className="font-black text-xs text-[#19194D] tabular-nums whitespace-nowrap">
                     {formatAmount(annualSummary.totalAmount)}
                   </span>
                 </div>
@@ -827,7 +827,7 @@ export default function SalesListClient({
                             : 'bg-white border-transparent hover:bg-[#F0F0FF] hover:border-[#CCCCFF]'
                       }`}
                     >
-                      <div className="flex items-center gap-1.5 min-w-0">
+                      <div className="flex items-center gap-1.5 min-w-0 shrink-0">
                         <span
                           className={`w-2 h-2 rounded-full shrink-0 ${
                             isSelected
@@ -839,11 +839,11 @@ export default function SalesListClient({
                                   : 'bg-[#D6D6FF]'
                           }`}
                         />
-                        <span className="font-mono font-black text-xs text-[#1F1F5C]">
+                        <span className="font-mono font-black text-xs text-[#1F1F5C] whitespace-nowrap shrink-0">
                           {bucket.label}
                         </span>
                         {bucket.pendingCount > 0 && (
-                          <span className="text-[10px] font-sans font-bold text-[#C00000]">
+                          <span className="text-[10px] font-sans font-bold text-[#C00000] whitespace-nowrap shrink-0">
                             未{bucket.pendingCount}
                           </span>
                         )}
@@ -851,7 +851,7 @@ export default function SalesListClient({
 
                       <div className="flex items-center gap-1.5 shrink-0">
                         <span
-                          className={`px-1.5 py-0.5 rounded-full font-mono text-[10px] font-bold border ${
+                          className={`px-2 py-0.5 rounded-full font-mono text-[10px] font-bold border whitespace-nowrap shrink-0 ${
                             bucket.count > 0
                               ? 'bg-[#E6E6FF] text-[#1F1F5C] border-[#9999FF]'
                               : 'bg-[#F5F5FF] text-[#666699] border-[#D6D6FF]'
@@ -860,7 +860,7 @@ export default function SalesListClient({
                           {bucket.count}件
                         </span>
                         <span
-                          className={`font-mono font-black text-xs tabular-nums min-w-[68px] text-right ${
+                          className={`font-mono font-black text-xs tabular-nums min-w-[96px] text-right whitespace-nowrap shrink-0 ${
                             bucket.totalAmount > 0 ? 'text-[#19194D]' : 'text-[#666699]'
                           }`}
                         >
@@ -877,7 +877,7 @@ export default function SalesListClient({
               <span className="text-[10px] font-sans font-bold truncate">
                 {periodScopeLabel}（{displayedItems.length}件）
               </span>
-              <span className="font-black text-xs tabular-nums shrink-0">
+              <span className="font-black text-xs tabular-nums shrink-0 whitespace-nowrap">
                 {formatAmount(annualSummary.totalAmount)}
               </span>
             </div>
@@ -886,7 +886,7 @@ export default function SalesListClient({
           {/* 2. 右メインパネル: 固定列幅＋件名列可変伸縮テーブル */}
           <div className="flex-1 min-w-0 min-h-0 bg-white rounded-xl border-2 border-[#9999FF] shadow-2xs overflow-hidden flex flex-col">
             <div className="flex-1 min-h-0 overflow-auto">
-              <table className="w-full h-full table-fixed min-w-[944px] text-left border-collapse text-xs">
+              <table className="w-full h-full table-fixed min-w-[984px] text-left border-collapse text-xs">
                 <colgroup>
                   <col className="w-[32px]" />
                   <col className="w-[72px]" />
@@ -895,9 +895,9 @@ export default function SalesListClient({
                   <col className="w-[64px]" />
                   <col className="w-[126px]" />
                   <col />
-                  <col className="w-[98px]" />
-                  <col className="w-[88px]" />
-                  <col className="w-[102px]" />
+                  <col className="w-[110px]" />
+                  <col className="w-[106px]" />
+                  <col className="w-[112px]" />
                   <col className="w-[38px]" />
                 </colgroup>
                 <thead className="sticky top-0 z-20 shadow-[0_1px_0_0_rgba(120,120,255,0.4)]">
